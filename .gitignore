@@ -1,0 +1,6 @@
+mediamtx/*.exe
+mediamtx/*.zip
+mediamtx/*.log
+mediamtx/data/
+logs/
+*.tmp

@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cam App Publisher</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="bg-grid"></div>
+    <header class="hero">
+      <div class="badge">PUBLISHER</div>
+      <h1>Cam App Publisher</h1>
+      <p>Use o navegador do celular como camera e envie direto via WebRTC.</p>
+      <div class="hero-actions">
+        <a class="btn ghost" href="index.html">Abrir Viewer</a>
+      </div>
+    </header>
+
+    <main class="publisher">
+      <section class="panel">
+        <div id="secureWarning" class="notice hidden">
+          Camera no browser exige HTTPS. Para dev local, use o flag do Chrome
+          "Insecure origins treated as secure" para permitir http://SEU_IP_LOCAL:5173.
+        </div>
+
+        <label class="field">
+          <span>Signal Base URL</span>
+          <input id="signalBase" type="text" placeholder="http://SEU_IP_LOCAL:5173" />
+        </label>
+
+        <label class="field">
+          <span>Path</span>
+          <input id="path" type="text" placeholder="cam1" />
+        </label>
+
+        <div class="row">
+          <label class="checkbox">
+            <input id="audio" type="checkbox" checked />
+            <span>Audio</span>
+          </label>
+
+          <label class="field small">
+            <span>Camera</span>
+            <select id="facing">
+              <option value="environment">Traseira</option>
+              <option value="user">Frontal</option>
+              <option value="auto">Auto</option>
+            </select>
+          </label>
+        </div>
+
+        <div class="actions">
+          <button id="start" class="btn">Iniciar</button>
+          <button id="stop" class="btn ghost" disabled>Parar</button>
+        </div>
+
+        <div id="status" class="status">Pronto</div>
+      </section>
+
+      <section class="panel">
+        <div class="video-wrap">
+          <video id="preview" playsinline autoplay muted></video>
+        </div>
+        <p class="hint">Dica: mantenha a tela ativa para nao pausar a camera.</p>
+
+        <div class="log">
+          <div class="log-title">Logs</div>
+          <pre id="log"></pre>
+          <button id="clearLog" class="btn ghost small">Limpar logs</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="publish.js"></script>
+  </body>
+</html>

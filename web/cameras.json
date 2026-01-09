@@ -1,0 +1,12 @@
+[
+  {
+    "id": "cam1",
+    "name": "Xiaomi Redmi Note 14",
+    "path": "cam1"
+  },
+  {
+    "id": "cam2",
+    "name": "Xiaomi Redmi Note 6 Pro",
+    "path": "cam2"
+  }
+]

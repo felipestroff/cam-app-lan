@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cam App LAN</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="bg-grid"></div>
+    <header class="hero">
+      <div class="badge">LAN ONLY</div>
+      <h1>Cam App LAN</h1>
+      <p>Viewer simples para conexao direta via WebRTC na LAN.</p>
+      <div class="hero-actions">
+        <a class="btn ghost" href="publish.html">Usar celular como camera</a>
+      </div>
+    </header>
+
+    <main>
+      <section class="controls">
+        <label class="field">
+          <span>Signal Base URL</span>
+          <input id="baseUrl" type="text" placeholder="http://SEU_IP_LOCAL:5173" />
+        </label>
+        <button id="reload" class="btn">Recarregar lista</button>
+      </section>
+
+      <section id="grid" class="grid"></section>
+    </main>
+
+    <template id="camera-card">
+      <article class="card">
+        <div class="card-head">
+          <div class="card-title">
+            <div class="dot"></div>
+            <span class="name"></span>
+          </div>
+          <div class="rec-indicator hidden">
+            <span class="rec-dot"></span>
+            REC
+          </div>
+          <div class="card-actions">
+            <button class="btn connect">Conectar</button>
+            <button class="btn ghost disconnect hidden">Desconectar</button>
+            <select class="format-select" title="Formato de gravacao">
+              <option value="webm">WebM</option>
+              <option value="mp4">MP4</option>
+            </select>
+            <button class="btn record" disabled>Gravar</button>
+            <button class="btn ghost stop-record hidden" disabled>Parar</button>
+          </div>
+        </div>
+        <div class="video-wrap">
+          <video playsinline autoplay muted></video>
+        </div>
+        <div class="status">Aguardando</div>
+      </article>
+    </template>
+
+    <script src="app.js"></script>
+  </body>
+</html>
