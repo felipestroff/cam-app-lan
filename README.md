@@ -14,9 +14,10 @@ Projeto inicial para visualizar cameras em LAN (sem login) com WebRTC direto ent
 
 ## Passos rapidos
 1) Suba o servidor (static + signaling)
-```powershell
-.\scripts\serve-web.ps1 -Root .\web -Port 5173 -HostName +
-```
+  - PowerShell (Administrador):
+  ```powershell
+  .\scripts\serve-web.ps1 -Root .\web -Port 5173 -HostName +
+  ```
 Abra no navegador: `http://SEU_IP_LOCAL:5173` (ex.: `http://192.168.1.6:5173`)
 
 2) No celular, abra o publisher
@@ -39,7 +40,11 @@ Abra no navegador: `http://SEU_IP_LOCAL:5173` (ex.: `http://192.168.1.6:5173`)
   - Acesse `chrome://flags/#unsafely-treat-insecure-origin-as-secure`
   - Adicione `http://SEU_IP_LOCAL:5173` (ex.: `http://192.168.1.6:5173`) e reinicie o navegador
 - WebRTC direto funciona melhor em LAN. Um path = uma camera ativa.
-- Se o viewer nao conectar, permita o navegador no firewall do Windows.
+- No PC (viewer), libere a porta TCP 5173 no Firewall do Windows (entrada) ou crie regra para o PowerShell/`serve-web.ps1`.
+  - PowerShell (Administrador):
+    ```powershell
+    New-NetFirewallRule -DisplayName "Cam App LAN 5173" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5173
+    ```
 - Gravacao em MP4 depende do navegador. Se falhar, use WebM.
 
 ## Proximos passos (quando for evoluir)

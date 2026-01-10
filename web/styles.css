@@ -266,7 +266,8 @@ main {
   flex-wrap: wrap;
 }
 
-.format-select {
+.format-select,
+.orientation-select {
   padding: 8px 10px;
   border-radius: 10px;
   border: 1px solid var(--panel-edge);
@@ -316,12 +317,23 @@ main {
   overflow: hidden;
   background: #0b0f14;
   border: 1px solid rgba(255, 255, 255, 0.08);
+  position: relative;
+}
+
+.video-wrap.portrait {
+  aspect-ratio: 9 / 16;
 }
 
 video {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  transform: rotate(0deg);
+  transform-origin: center center;
+}
+
+.video-wrap.portrait video {
+  transform: rotate(90deg);
 }
 
 .status {

@@ -16,6 +16,8 @@ let stream = null;
 let stopRequested = false;
 let lastBaseUrl = "";
 let lastPath = "";
+let restartTimer = null;
+let restartInFlight = false;
 
 function logLine(message) {
   if (!logEl) return;
@@ -54,6 +56,13 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function clearRestartTimer() {
+  if (restartTimer) {
+    clearTimeout(restartTimer);
+    restartTimer = null;
+  }
+}
+
 async function postSignal(baseUrl, endpoint, payload) {
   const url = buildSignalUrl(baseUrl, endpoint);
   const response = await fetch(url, {
@@ -67,6 +76,53 @@ async function postSignal(baseUrl, endpoint, payload) {
     throw new Error(`Signal error: ${response.status}`);
   }
   return response;
+}
+
+async function sendResetSignal() {
+  if (!lastBaseUrl || !lastPath) return;
+  try {
+    await postSignal(lastBaseUrl, "reset", { path: lastPath });
+    logLine("Signal reset sent");
+  } catch (error) {
+    logLine(`Signal reset failed: ${formatError(error)}`);
+  }
+}
+
+async function restartPublish(reason) {
+  if (restartInFlight || stopRequested) return;
+  restartInFlight = true;
+  clearRestartTimer();
+  setStatus("Reconectando...", "err");
+  logLine(`Auto-restart (${reason})`);
+  await sendResetSignal();
+  if (pc) {
+    pc.close();
+    pc = null;
+    logLine("Peer connection closed");
+  }
+  await delay(800);
+  try {
+    await startPublish();
+  } finally {
+    restartInFlight = false;
+  }
+}
+
+function scheduleRestart(reason) {
+  if (stopRequested || restartInFlight || restartTimer) return;
+  logLine(`Scheduling reconnect (${reason})`);
+  restartTimer = setTimeout(() => {
+    restartTimer = null;
+    const state = pc ? pc.connectionState : "none";
+    const iceState = pc ? pc.iceConnectionState : "none";
+    if (state === "failed" || state === "disconnected" || iceState === "failed" || iceState === "disconnected") {
+      restartPublish(reason).catch((error) => {
+        logLine(`Auto-restart failed: ${formatError(error)}`);
+      });
+    } else {
+      logLine(`Reconnect canceled (state=${state}, ice=${iceState})`);
+    }
+  }, 1200);
 }
 
 async function getSignal(baseUrl, endpoint, path) {
@@ -117,6 +173,7 @@ async function waitForAnswer(baseUrl, path) {
 async function startPublish() {
   if (pc) return;
 
+  clearRestartTimer();
   stopRequested = false;
   const baseUrl = baseInput.value.trim() || DEFAULT_SIGNAL_BASE;
   const path = pathInput.value.trim();
@@ -190,10 +247,14 @@ async function startPublish() {
       }
       if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
         setStatus("Falha na conexao", "err");
+        scheduleRestart(pc.connectionState);
       }
     });
     pc.addEventListener("iceconnectionstatechange", () => {
       logLine(`ICE state: ${pc.iceConnectionState}`);
+      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "disconnected") {
+        scheduleRestart(`ice-${pc.iceConnectionState}`);
+      }
     });
     pc.addEventListener("signalingstatechange", () => {
       logLine(`Signaling state: ${pc.signalingState}`);
@@ -241,14 +302,8 @@ async function startPublish() {
 
 async function stopPublish() {
   stopRequested = true;
-  if (lastBaseUrl && lastPath) {
-    try {
-      await postSignal(lastBaseUrl, "reset", { path: lastPath });
-      logLine("Signal reset sent");
-    } catch (error) {
-      logLine(`Signal reset failed: ${formatError(error)}`);
-    }
-  }
+  clearRestartTimer();
+  await sendResetSignal();
 
   if (pc) {
     pc.close();

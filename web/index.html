@@ -13,7 +13,7 @@
       <h1>Cam App LAN</h1>
       <p>Viewer simples para conexao direta via WebRTC na LAN.</p>
       <div class="hero-actions">
-        <a class="btn ghost" href="publish.html">Usar celular como camera</a>
+        <a class="btn ghost" href="publish.html">Usar dispositivo como camera</a>
       </div>
     </header>
 
@@ -43,6 +43,11 @@
           <div class="card-actions">
             <button class="btn connect">Conectar</button>
             <button class="btn ghost disconnect hidden">Desconectar</button>
+            <select class="orientation-select" title="Orientacao do video">
+              <option value="landscape">Paisagem</option>
+              <option value="portrait">Retrato</option>
+            </select>
+            <button class="btn ghost fullscreen" type="button">Tela cheia</button>
             <select class="format-select" title="Formato de gravacao">
               <option value="webm">WebM</option>
               <option value="mp4">MP4</option>

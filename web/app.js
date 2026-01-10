@@ -6,6 +6,8 @@ const template = document.getElementById("camera-card");
 
 const activePeers = new Map();
 const activeRecorders = new Map();
+const lastAnsweredOffer = new Map();
+const cameraPaths = new Map();
 
 function normalizeBaseUrl(url) {
   if (!url) return DEFAULT_SIGNAL_BASE;
@@ -36,6 +38,23 @@ async function postSignal(baseUrl, endpoint, payload) {
   }
 }
 
+async function resetSignal(baseUrl, path) {
+  if (!path) return;
+  try {
+    await postSignal(baseUrl, "reset", { path });
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+function resetSignalBeacon(baseUrl, path) {
+  if (!path || typeof navigator.sendBeacon !== "function") return;
+  const url = buildSignalUrl(baseUrl, "reset");
+  const payload = JSON.stringify({ path });
+  const blob = new Blob([payload], { type: "application/json" });
+  navigator.sendBeacon(url, blob);
+}
+
 async function getSignal(baseUrl, endpoint, path) {
   const url = buildSignalUrl(baseUrl, endpoint, path);
   const response = await fetch(url, { cache: "no-store" });
@@ -52,6 +71,62 @@ function setStatus(statusEl, text, kind) {
   statusEl.textContent = text;
   statusEl.classList.remove("ok", "err");
   if (kind) statusEl.classList.add(kind);
+}
+
+function offerFingerprint(offer) {
+  if (!offer) return "";
+  return offer.ts || offer.sdp || "";
+}
+
+function orientationKey(id) {
+  return `cameraOrientation:${id}`;
+}
+
+function getStoredOrientation(id) {
+  const stored = localStorage.getItem(orientationKey(id));
+  return stored === "portrait" ? "portrait" : "landscape";
+}
+
+function storeOrientation(id, orientation) {
+  localStorage.setItem(orientationKey(id), orientation);
+}
+
+function applyOrientation(videoWrap, orientation) {
+  if (!videoWrap) return;
+  videoWrap.classList.toggle("portrait", orientation === "portrait");
+}
+
+function getFullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement;
+}
+
+function requestFullscreen(target) {
+  if (!target) return Promise.resolve();
+  if (target.requestFullscreen) {
+    return target.requestFullscreen();
+  }
+  if (target.webkitRequestFullscreen) {
+    return target.webkitRequestFullscreen();
+  }
+  return Promise.resolve();
+}
+
+function exitFullscreen() {
+  if (document.exitFullscreen) {
+    return document.exitFullscreen();
+  }
+  if (document.webkitExitFullscreen) {
+    return document.webkitExitFullscreen();
+  }
+  return Promise.resolve();
+}
+
+async function toggleFullscreen(target) {
+  if (getFullscreenElement()) {
+    await exitFullscreen();
+    return;
+  }
+  await requestFullscreen(target);
 }
 
 function waitForIceGathering(pc) {
@@ -199,10 +274,15 @@ function startRecording(id, camera, stream, ui, statusEl) {
   }
 }
 
-async function waitForOffer(baseUrl, path, session) {
+async function waitForOffer(baseUrl, path, session, lastFingerprint) {
   while (!session.stopped) {
     const data = await getSignal(baseUrl, "offer", path);
     if (data && data.sdp) {
+      const fingerprint = offerFingerprint(data);
+      if (lastFingerprint && fingerprint === lastFingerprint) {
+        await delay(500);
+        continue;
+      }
       return data;
     }
     await delay(1000);
@@ -210,11 +290,13 @@ async function waitForOffer(baseUrl, path, session) {
   throw new Error("Cancelado");
 }
 
-async function startDirectStream({ videoEl, baseUrl, path, statusEl, session, onDisconnect }) {
-  const offer = await waitForOffer(baseUrl, path, session);
+async function startDirectStream({ id, videoEl, baseUrl, path, statusEl, session, onDisconnect }) {
+  const lastFingerprint = lastAnsweredOffer.get(id) || "";
+  const offer = await waitForOffer(baseUrl, path, session, lastFingerprint);
   if (session.stopped) {
     throw new Error("Cancelado");
   }
+  const fingerprint = offerFingerprint(offer);
 
   const pc = new RTCPeerConnection();
   session.pc = pc;
@@ -247,6 +329,9 @@ async function startDirectStream({ videoEl, baseUrl, path, statusEl, session, on
     type: pc.localDescription.type,
     sdp: pc.localDescription.sdp,
   });
+  if (fingerprint) {
+    lastAnsweredOffer.set(id, fingerprint);
+  }
   setStatus(statusEl, "Conectando...");
 
   return pc;
@@ -267,26 +352,50 @@ function stopStream(id, videoEl, statusEl) {
 
 function renderCameras(cameras) {
   grid.innerHTML = "";
+  cameraPaths.clear();
   cameras.forEach((camera) => {
     const node = template.content.cloneNode(true);
     const card = node.querySelector(".card");
     const nameEl = node.querySelector(".name");
     const connectBtn = node.querySelector(".connect");
     const disconnectBtn = node.querySelector(".disconnect");
+    const orientationSelect = node.querySelector(".orientation-select");
+    const fullscreenBtn = node.querySelector(".fullscreen");
     const formatSelect = node.querySelector(".format-select");
     const recordBtn = node.querySelector(".record");
     const stopRecordBtn = node.querySelector(".stop-record");
     const recIndicator = node.querySelector(".rec-indicator");
     const statusEl = node.querySelector(".status");
+    const videoWrap = node.querySelector(".video-wrap");
     const videoEl = node.querySelector("video");
 
     nameEl.textContent = camera.name || camera.path || "Camera";
     card.dataset.id = camera.id || camera.path;
+    const cameraId = card.dataset.id;
+    const cameraPath = camera.path || camera.id || cameraId;
+    cameraPaths.set(cameraId, cameraPath);
     setStatus(statusEl, "Aguardando");
     recordBtn.disabled = true;
     stopRecordBtn.disabled = true;
 
     const recordUi = { recordBtn, stopRecordBtn, recIndicator, formatSelect };
+
+    if (orientationSelect) {
+      const storedOrientation = getStoredOrientation(cameraId);
+      orientationSelect.value = storedOrientation;
+      applyOrientation(videoWrap, storedOrientation);
+      orientationSelect.addEventListener("change", () => {
+        const value = orientationSelect.value === "portrait" ? "portrait" : "landscape";
+        applyOrientation(videoWrap, value);
+        storeOrientation(cameraId, value);
+      });
+    }
+
+    if (fullscreenBtn) {
+      fullscreenBtn.addEventListener("click", () => {
+        toggleFullscreen(videoWrap);
+      });
+    }
 
     connectBtn.addEventListener("click", async () => {
       const id = card.dataset.id;
@@ -298,9 +407,10 @@ function renderCameras(cameras) {
 
       try {
         const pc = await startDirectStream({
+          id,
           videoEl,
           baseUrl: baseUrlInput.value.trim(),
-          path: camera.path,
+          path: cameraPath,
           statusEl,
           session,
           onDisconnect: () => {
@@ -334,6 +444,7 @@ function renderCameras(cameras) {
       const id = card.dataset.id;
       stopRecording(id, recordUi);
       stopStream(id, videoEl, statusEl);
+      resetSignal(baseUrlInput.value.trim(), cameraPath);
       disconnectBtn.classList.add("hidden");
       connectBtn.classList.remove("hidden");
       recordBtn.disabled = true;
@@ -380,6 +491,14 @@ function init() {
   });
   reloadButton.addEventListener("click", loadCameras);
   loadCameras();
+
+  window.addEventListener("pagehide", () => {
+    const baseUrl = baseUrlInput.value.trim() || DEFAULT_SIGNAL_BASE;
+    for (const [id] of activePeers) {
+      const path = cameraPaths.get(id) || id;
+      resetSignalBeacon(baseUrl, path);
+    }
+  });
 }
 
 init();
