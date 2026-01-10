@@ -1,5 +1,6 @@
 const DEFAULT_SIGNAL_BASE = window.location.origin;
 const baseInput = document.getElementById("signalBase");
+const nameInput = document.getElementById("name");
 const pathInput = document.getElementById("path");
 const audioInput = document.getElementById("audio");
 const facingSelect = document.getElementById("facing");
@@ -11,6 +12,9 @@ const warningEl = document.getElementById("secureWarning");
 const logEl = document.getElementById("log");
 const clearLogBtn = document.getElementById("clearLog");
 
+const DEVICE_ID_KEY = "cameraId";
+const CAMERA_NAME_KEY = "cameraName";
+
 let pc = null;
 let stream = null;
 let stopRequested = false;
@@ -18,6 +22,8 @@ let lastBaseUrl = "";
 let lastPath = "";
 let restartTimer = null;
 let restartInFlight = false;
+let cameraId = "";
+let heartbeatTimer = null;
 
 function logLine(message) {
   if (!logEl) return;
@@ -56,11 +62,55 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function generateCameraId() {
+  if (window.crypto && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `cam-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function clearRestartTimer() {
   if (restartTimer) {
     clearTimeout(restartTimer);
     restartTimer = null;
   }
+}
+
+function stopHeartbeat() {
+  if (heartbeatTimer) {
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+}
+
+function buildHeartbeatPayload() {
+  if (!lastPath) return null;
+  const payload = { path: lastPath, id: cameraId };
+  const cameraName = nameInput ? nameInput.value.trim() : "";
+  if (cameraName) {
+    payload.name = cameraName;
+  }
+  return payload;
+}
+
+function sendHeartbeat() {
+  if (!lastBaseUrl) return Promise.resolve();
+  const payload = buildHeartbeatPayload();
+  if (!payload) return Promise.resolve();
+  return postSignal(lastBaseUrl, "ping", payload);
+}
+
+function startHeartbeat() {
+  if (heartbeatTimer) return;
+  sendHeartbeat().catch((error) => {
+    logLine(`Ping failed: ${formatError(error)}`);
+  });
+  heartbeatTimer = setInterval(() => {
+    if (stopRequested) return;
+    sendHeartbeat().catch((error) => {
+      logLine(`Ping failed: ${formatError(error)}`);
+    });
+  }, 5000);
 }
 
 async function postSignal(baseUrl, endpoint, payload) {
@@ -92,6 +142,7 @@ async function restartPublish(reason) {
   if (restartInFlight || stopRequested) return;
   restartInFlight = true;
   clearRestartTimer();
+  stopHeartbeat();
   setStatus("Reconectando...", "err");
   logLine(`Auto-restart (${reason})`);
   await sendResetSignal();
@@ -174,9 +225,11 @@ async function startPublish() {
   if (pc) return;
 
   clearRestartTimer();
+  stopHeartbeat();
   stopRequested = false;
   const baseUrl = baseInput.value.trim() || DEFAULT_SIGNAL_BASE;
   const path = pathInput.value.trim();
+  const cameraName = nameInput ? nameInput.value.trim() : "";
   if (!path) {
     setStatus("Informe um path", "err");
     logLine("Start blocked: missing path");
@@ -197,6 +250,9 @@ async function startPublish() {
   try {
     setStatus("Abrindo camera...");
     logLine(`Starting publish: base=${baseUrl} path=${path}`);
+    if (cameraName) {
+      logLine(`Camera name: ${cameraName}`);
+    }
     const facing = facingSelect.value;
     const audioEnabled = audioInput.checked;
 
@@ -265,12 +321,18 @@ async function startPublish() {
     await waitForIceGathering(pc);
 
     logLine("Signal POST -> /signal/offer");
-    await postSignal(baseUrl, "offer", {
+    const payload = {
       path,
       type: pc.localDescription.type,
       sdp: pc.localDescription.sdp,
-    });
+      id: cameraId,
+    };
+    if (cameraName) {
+      payload.name = cameraName;
+    }
+    await postSignal(baseUrl, "offer", payload);
     logLine("Offer sent");
+    startHeartbeat();
 
     setStatus("Aguardando viewer...");
     logLine("Waiting for answer...");
@@ -303,6 +365,7 @@ async function startPublish() {
 async function stopPublish() {
   stopRequested = true;
   clearRestartTimer();
+  stopHeartbeat();
   await sendResetSignal();
 
   if (pc) {
@@ -326,11 +389,19 @@ async function stopPublish() {
 function init() {
   const storedBase = localStorage.getItem("signalBase") || localStorage.getItem("whipBase");
   const storedPath = localStorage.getItem("signalPath") || localStorage.getItem("whipPath");
+  cameraId = localStorage.getItem(DEVICE_ID_KEY);
+  if (!cameraId) {
+    cameraId = generateCameraId();
+    localStorage.setItem(DEVICE_ID_KEY, cameraId);
+  }
   baseInput.value = storedBase || DEFAULT_SIGNAL_BASE;
   if (baseInput.value.includes(":8889")) {
     baseInput.value = DEFAULT_SIGNAL_BASE;
   }
-  pathInput.value = storedPath || "cam1";
+  pathInput.value = storedPath || cameraId;
+  if (nameInput) {
+    nameInput.value = localStorage.getItem(CAMERA_NAME_KEY) || "";
+  }
 
   logLine(`Init: base=${baseInput.value} path=${pathInput.value}`);
 
@@ -340,6 +411,11 @@ function init() {
   pathInput.addEventListener("change", () => {
     localStorage.setItem("signalPath", pathInput.value.trim());
   });
+  if (nameInput) {
+    nameInput.addEventListener("change", () => {
+      localStorage.setItem(CAMERA_NAME_KEY, nameInput.value.trim());
+    });
+  }
 
   startBtn.addEventListener("click", startPublish);
   stopBtn.addEventListener("click", stopPublish);

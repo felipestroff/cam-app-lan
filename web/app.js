@@ -3,6 +3,8 @@ const baseUrlInput = document.getElementById("baseUrl");
 const reloadButton = document.getElementById("reload");
 const grid = document.getElementById("grid");
 const template = document.getElementById("camera-card");
+const logEl = document.getElementById("log");
+const clearLogBtn = document.getElementById("clearLog");
 
 const activePeers = new Map();
 const activeRecorders = new Map();
@@ -12,6 +14,13 @@ const cameraPaths = new Map();
 function normalizeBaseUrl(url) {
   if (!url) return DEFAULT_SIGNAL_BASE;
   return url.replace(/\/+$/, "");
+}
+
+function logLine(message) {
+  if (!logEl) return;
+  const time = new Date().toISOString().slice(11, 19);
+  logEl.textContent += `[${time}] ${message}\n`;
+  logEl.scrollTop = logEl.scrollHeight;
 }
 
 function buildSignalUrl(baseUrl, endpoint, path) {
@@ -26,6 +35,7 @@ function delay(ms) {
 
 async function postSignal(baseUrl, endpoint, payload) {
   const url = buildSignalUrl(baseUrl, endpoint);
+  logLine(`Signal POST -> ${url}`);
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -42,8 +52,10 @@ async function resetSignal(baseUrl, path) {
   if (!path) return;
   try {
     await postSignal(baseUrl, "reset", { path });
+    logLine(`[${path}] Signal reset enviado`);
   } catch (error) {
     console.error(error);
+    logLine(`[${path}] Signal reset falhou`);
   }
 }
 
@@ -57,6 +69,9 @@ function resetSignalBeacon(baseUrl, path) {
 
 async function getSignal(baseUrl, endpoint, path) {
   const url = buildSignalUrl(baseUrl, endpoint, path);
+  if (endpoint !== "offer") {
+    logLine(`Signal GET -> ${url}`);
+  }
   const response = await fetch(url, { cache: "no-store" });
   if (response.status === 204) {
     return null;
@@ -78,22 +93,20 @@ function offerFingerprint(offer) {
   return offer.ts || offer.sdp || "";
 }
 
-function orientationKey(id) {
-  return `cameraOrientation:${id}`;
+function aliasKey(id) {
+  return `cameraAlias:${id}`;
 }
 
-function getStoredOrientation(id) {
-  const stored = localStorage.getItem(orientationKey(id));
-  return stored === "portrait" ? "portrait" : "landscape";
+function getStoredAlias(id) {
+  return localStorage.getItem(aliasKey(id)) || "";
 }
 
-function storeOrientation(id, orientation) {
-  localStorage.setItem(orientationKey(id), orientation);
-}
-
-function applyOrientation(videoWrap, orientation) {
-  if (!videoWrap) return;
-  videoWrap.classList.toggle("portrait", orientation === "portrait");
+function storeAlias(id, alias) {
+  if (!alias) {
+    localStorage.removeItem(aliasKey(id));
+    return;
+  }
+  localStorage.setItem(aliasKey(id), alias);
 }
 
 function getFullscreenElement() {
@@ -190,6 +203,7 @@ function downloadRecording(blob, filename) {
 function stopRecording(id, ui) {
   const entry = activeRecorders.get(id);
   if (!entry) return;
+  logLine(`[${id}] Parando gravacao`);
   entry.recorder.stop();
   activeRecorders.delete(id);
   if (ui) {
@@ -208,10 +222,12 @@ function startRecording(id, camera, stream, ui, statusEl) {
   if (activeRecorders.has(id)) return;
   if (!stream) {
     setStatus(statusEl, "Sem stream para gravar", "err");
+    logLine(`[${id}] Sem stream para gravar`);
     return;
   }
   if (typeof MediaRecorder === "undefined") {
     setStatus(statusEl, "MediaRecorder indisponivel", "err");
+    logLine(`[${id}] MediaRecorder indisponivel`);
     return;
   }
 
@@ -222,6 +238,7 @@ function startRecording(id, camera, stream, ui, statusEl) {
   const { mimeType, ext, supported } = pickRecorderOptions(selectedFormat);
   if (!supported) {
     setStatus(statusEl, `${selectionLabel} nao suportado neste navegador`, "err");
+    logLine(`[${id}] Formato ${selectionLabel} nao suportado`);
     return;
   }
   const options = mimeType ? { mimeType } : {};
@@ -244,6 +261,7 @@ function startRecording(id, camera, stream, ui, statusEl) {
     const blob = new Blob(chunks, { type: blobType });
     const filename = buildRecordingName(camera, ext);
     downloadRecording(blob, filename);
+    logLine(`[${id}] Gravacao salva: ${filename}`);
     if (activeRecorders.has(id)) {
       activeRecorders.delete(id);
     }
@@ -265,6 +283,7 @@ function startRecording(id, camera, stream, ui, statusEl) {
 
   activeRecorders.set(id, { recorder });
   recorder.start();
+  logLine(`[${id}] Gravacao iniciada (${selectionLabel})`);
   ui.recIndicator.classList.remove("hidden");
   ui.recordBtn.disabled = true;
   ui.stopRecordBtn.disabled = false;
@@ -275,6 +294,7 @@ function startRecording(id, camera, stream, ui, statusEl) {
 }
 
 async function waitForOffer(baseUrl, path, session, lastFingerprint) {
+  logLine(`[${path}] Aguardando offer...`);
   while (!session.stopped) {
     const data = await getSignal(baseUrl, "offer", path);
     if (data && data.sdp) {
@@ -283,6 +303,7 @@ async function waitForOffer(baseUrl, path, session, lastFingerprint) {
         await delay(500);
         continue;
       }
+      logLine(`[${path}] Offer recebido`);
       return data;
     }
     await delay(1000);
@@ -304,10 +325,12 @@ async function startDirectStream({ id, videoEl, baseUrl, path, statusEl, session
   pc.addEventListener("track", (event) => {
     if (event.streams && event.streams[0]) {
       videoEl.srcObject = event.streams[0];
+      logLine(`[${path}] Track recebido`);
     }
   });
 
   pc.addEventListener("connectionstatechange", () => {
+    logLine(`[${path}] Connection state: ${pc.connectionState}`);
     if (pc.connectionState === "connected") {
       setStatus(statusEl, "Conectado", "ok");
     }
@@ -329,6 +352,7 @@ async function startDirectStream({ id, videoEl, baseUrl, path, statusEl, session
     type: pc.localDescription.type,
     sdp: pc.localDescription.sdp,
   });
+  logLine(`[${path}] Answer enviado`);
   if (fingerprint) {
     lastAnsweredOffer.set(id, fingerprint);
   }
@@ -359,7 +383,6 @@ function renderCameras(cameras) {
     const nameEl = node.querySelector(".name");
     const connectBtn = node.querySelector(".connect");
     const disconnectBtn = node.querySelector(".disconnect");
-    const orientationSelect = node.querySelector(".orientation-select");
     const fullscreenBtn = node.querySelector(".fullscreen");
     const formatSelect = node.querySelector(".format-select");
     const recordBtn = node.querySelector(".record");
@@ -368,38 +391,70 @@ function renderCameras(cameras) {
     const statusEl = node.querySelector(".status");
     const videoWrap = node.querySelector(".video-wrap");
     const videoEl = node.querySelector("video");
-
-    nameEl.textContent = camera.name || camera.path || "Camera";
     card.dataset.id = camera.id || camera.path;
     const cameraId = card.dataset.id;
     const cameraPath = camera.path || camera.id || cameraId;
     cameraPaths.set(cameraId, cameraPath);
+    const storedAlias = getStoredAlias(cameraId);
+    const baseName = camera.name || camera.path || "Camera";
+    nameEl.textContent = storedAlias || baseName;
+    nameEl.setAttribute("contenteditable", "true");
+    nameEl.setAttribute("spellcheck", "false");
+    nameEl.dataset.baseName = baseName;
+    nameEl.title = "Clique para renomear";
     setStatus(statusEl, "Aguardando");
     recordBtn.disabled = true;
     stopRecordBtn.disabled = true;
 
     const recordUi = { recordBtn, stopRecordBtn, recIndicator, formatSelect };
 
-    if (orientationSelect) {
-      const storedOrientation = getStoredOrientation(cameraId);
-      orientationSelect.value = storedOrientation;
-      applyOrientation(videoWrap, storedOrientation);
-      orientationSelect.addEventListener("change", () => {
-        const value = orientationSelect.value === "portrait" ? "portrait" : "landscape";
-        applyOrientation(videoWrap, value);
-        storeOrientation(cameraId, value);
-      });
-    }
+    const setConnectedUi = (connected) => {
+      if (fullscreenBtn) {
+        fullscreenBtn.classList.toggle("hidden", !connected);
+      }
+      if (formatSelect) {
+        formatSelect.classList.toggle("hidden", !connected);
+        formatSelect.disabled = !connected ? false : formatSelect.disabled;
+      }
+      if (recordBtn) {
+        recordBtn.classList.toggle("hidden", !connected);
+      }
+      if (!connected) {
+        recIndicator.classList.add("hidden");
+        stopRecordBtn.classList.add("hidden");
+      }
+    };
+
+    setConnectedUi(false);
+
+    nameEl.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        nameEl.blur();
+      }
+    });
+    nameEl.addEventListener("blur", () => {
+      const value = nameEl.textContent.replace(/\s+/g, " ").trim();
+      if (!value || value === baseName) {
+        storeAlias(cameraId, "");
+        nameEl.textContent = baseName;
+        return;
+      }
+      storeAlias(cameraId, value);
+      nameEl.textContent = value;
+    });
 
     if (fullscreenBtn) {
       fullscreenBtn.addEventListener("click", () => {
         toggleFullscreen(videoWrap);
+        logLine(`[${cameraPath}] Tela cheia alternada`);
       });
     }
 
     connectBtn.addEventListener("click", async () => {
       const id = card.dataset.id;
       if (activePeers.has(id)) return;
+      logLine(`[${cameraPath}] Conectar acionado`);
       const session = { stopped: false, pc: null };
       activePeers.set(id, session);
       setStatus(statusEl, "Aguardando publisher...");
@@ -415,6 +470,9 @@ function renderCameras(cameras) {
           session,
           onDisconnect: () => {
             stopRecording(id, recordUi);
+            setConnectedUi(false);
+            disconnectBtn.classList.add("hidden");
+            connectBtn.classList.remove("hidden");
             recordBtn.disabled = true;
             stopRecordBtn.disabled = true;
           },
@@ -424,15 +482,19 @@ function renderCameras(cameras) {
         }
         connectBtn.classList.add("hidden");
         disconnectBtn.classList.remove("hidden");
+        setConnectedUi(true);
         recordBtn.disabled = false;
+        logLine(`[${cameraPath}] Conectado`);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Falha";
         if (message === "Cancelado" && session.stopped) {
           setStatus(statusEl, "Desconectado");
+          logLine(`[${cameraPath}] Conexao cancelada`);
         } else {
           setStatus(statusEl, `Erro ao conectar (${message})`, "err");
           console.error(error);
           session.stopped = true;
+          logLine(`[${cameraPath}] Erro ao conectar: ${message}`);
         }
         activePeers.delete(id);
       } finally {
@@ -445,8 +507,10 @@ function renderCameras(cameras) {
       stopRecording(id, recordUi);
       stopStream(id, videoEl, statusEl);
       resetSignal(baseUrlInput.value.trim(), cameraPath);
+      logLine(`[${cameraPath}] Desconectado`);
       disconnectBtn.classList.add("hidden");
       connectBtn.classList.remove("hidden");
+      setConnectedUi(false);
       recordBtn.disabled = true;
       stopRecordBtn.disabled = true;
     });
@@ -465,17 +529,34 @@ function renderCameras(cameras) {
   });
 }
 
+async function fetchCamerasFromServer() {
+  const baseUrl = baseUrlInput.value.trim() || DEFAULT_SIGNAL_BASE;
+  const url = `${normalizeBaseUrl(baseUrl)}/cameras`;
+  logLine(`Cameras GET -> ${url}`);
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Cameras error: ${response.status}`);
+  }
+  const data = await response.json();
+  return Array.isArray(data) ? data : [];
+}
+
 async function loadCameras() {
   try {
-    const response = await fetch("cameras.json", { cache: "no-store" });
-    if (!response.ok) {
-      throw new Error("Nao foi possivel carregar cameras.json");
+    logLine("Carregando cameras...");
+    const data = await fetchCamerasFromServer();
+    if (!data.length) {
+      grid.innerHTML = "<div class=\"status\">Nenhuma camera ativa. Abra publish.html no celular.</div>";
+      cameraPaths.clear();
+      logLine("Nenhuma camera ativa");
+      return;
     }
-    const data = await response.json();
-    renderCameras(Array.isArray(data) ? data : []);
+    renderCameras(data);
+    logLine(`Cameras carregadas: ${data.length}`);
   } catch (error) {
     console.error(error);
     grid.innerHTML = "<div class=\"status err\">Erro ao carregar cameras.</div>";
+    logLine("Erro ao carregar cameras");
   }
 }
 
@@ -485,12 +566,21 @@ function init() {
   if (baseUrlInput.value.includes(":8889")) {
     baseUrlInput.value = DEFAULT_SIGNAL_BASE;
   }
+  logLine(`Init: base=${baseUrlInput.value}`);
 
   baseUrlInput.addEventListener("change", () => {
     localStorage.setItem("baseUrl", baseUrlInput.value.trim());
+    loadCameras();
+    logLine(`Base alterada: ${baseUrlInput.value.trim()}`);
   });
   reloadButton.addEventListener("click", loadCameras);
   loadCameras();
+  if (clearLogBtn && logEl) {
+    clearLogBtn.addEventListener("click", () => {
+      logEl.textContent = "";
+      logLine("Logs limpos");
+    });
+  }
 
   window.addEventListener("pagehide", () => {
     const baseUrl = baseUrlInput.value.trim() || DEFAULT_SIGNAL_BASE;

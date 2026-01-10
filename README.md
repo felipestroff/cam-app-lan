@@ -23,17 +23,19 @@ Abra no navegador: `http://SEU_IP_LOCAL:5173` (ex.: `http://192.168.1.6:5173`)
 2) No celular, abra o publisher
 - URL: `http://SEU_IP_LOCAL:5173/publish.html` (ex.: `http://192.168.1.6:5173/publish.html`)
 - Signal Base URL: `http://SEU_IP_LOCAL:5173` (ex.: `http://192.168.1.6:5173`)
-- Path: `cam1`
+- Nome da camera: opcional
+- Path: `cam1` (se deixar vazio, usa um identificador unico)
 - Clique em **Iniciar**
 
 3) No PC (viewer)
 - Abra `http://SEU_IP_LOCAL:5173` (ex.: `http://192.168.1.6:5173`)
 - Signal Base URL: `http://SEU_IP_LOCAL:5173` (ex.: `http://192.168.1.6:5173`)
 - Clique em **Conectar**
-- Opcional: clique em **Gravar** para salvar um `.webm` no PC
+- Opcional: clique em **Gravar** para salvar um `.mp4` no PC
 
-4) Cadastre cameras
-- Edite `web/cameras.json` com seus nomes e paths (ex.: `cam1`)
+4) Cameras na lista
+- As cameras aparecem automaticamente quando o publisher inicia (sem editar JSON).
+- No viewer, clique no nome da camera para editar o **Apelido** localmente.
 
 ## Notas importantes
 - Camera no navegador exige HTTPS. Para dev local no Chrome Android:
@@ -46,8 +48,8 @@ Abra no navegador: `http://SEU_IP_LOCAL:5173` (ex.: `http://192.168.1.6:5173`)
     New-NetFirewallRule -DisplayName "Cam App LAN 5173" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5173
     ```
 - Gravacao em MP4 depende do navegador. Se falhar, use WebM.
+- O viewer exibe um painel de logs para ajudar no diagnostico.
 
 ## Proximos passos (quando for evoluir)
 - Backend com cadastro e login
-- Descoberta automatica de cameras na LAN
 - App Android proprio com CameraX e WebRTC direto

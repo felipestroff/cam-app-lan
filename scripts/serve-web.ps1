@@ -28,6 +28,7 @@ $mimeTypes = @{
 }
 
 $rooms = @{}
+$cameraTimeoutSeconds = 30
 
 function Add-CorsHeaders {
   param([System.Net.HttpListenerResponse]$Response)
@@ -54,7 +55,23 @@ function Send-JsonResponse {
     $Payload
   )
   Add-CorsHeaders $Response
-  $json = $Payload | ConvertTo-Json -Depth 6
+  if ($null -eq $Payload) {
+    $json = "null"
+  } elseif ($Payload -is [System.Array]) {
+    if ($Payload.Length -eq 0) {
+      $json = "[]"
+    } else {
+      $json = ConvertTo-Json -Depth 6 -InputObject $Payload
+      if ($Payload.Length -eq 1 -and $json -notmatch '^\s*\[') {
+        $json = "[$json]"
+      }
+    }
+  } else {
+    $json = ConvertTo-Json -Depth 6 -InputObject $Payload
+    if ([string]::IsNullOrWhiteSpace($json)) {
+      $json = "{}"
+    }
+  }
   $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
   $Response.StatusCode = $StatusCode
   $Response.ContentType = "application/json"
@@ -106,6 +123,9 @@ function Get-Room {
       Offer = $null
       Answer = $null
       Updated = [DateTime]::UtcNow
+      Name = $null
+      Id = $null
+      LastSeen = $null
     }
   }
   return $rooms[$Path]
@@ -139,7 +159,14 @@ while ($listener.IsListening) {
             sdp = $data.sdp
             ts = [DateTime]::UtcNow.ToString("o")
           }
+          if ($data.name) {
+            $room.Name = $data.name
+          }
+          if ($data.id) {
+            $room.Id = $data.id
+          }
           $room.Answer = $null
+          $room.LastSeen = [DateTime]::UtcNow
           $room.Updated = [DateTime]::UtcNow
           Send-JsonResponse -Response $response -StatusCode 200 -Payload @{ ok = $true }
           continue
@@ -216,11 +243,71 @@ while ($listener.IsListening) {
         Send-EmptyResponse -Response $response -StatusCode 405
         continue
       }
+      "/signal/ping" {
+        if ($request.HttpMethod -eq "POST") {
+          $data = Read-JsonBody -Request $request
+          if (-not $data -or -not $data.path) {
+            Send-JsonResponse -Response $response -StatusCode 400 -Payload @{ error = "path required" }
+            continue
+          }
+          $room = Get-Room -Path $data.path
+          if ($data.name) {
+            $room.Name = $data.name
+          }
+          if ($data.id) {
+            $room.Id = $data.id
+          }
+          $room.LastSeen = [DateTime]::UtcNow
+          $room.Updated = [DateTime]::UtcNow
+          Send-JsonResponse -Response $response -StatusCode 200 -Payload @{ ok = $true }
+          continue
+        }
+
+        Send-EmptyResponse -Response $response -StatusCode 405
+        continue
+      }
       Default {
         Send-EmptyResponse -Response $response -StatusCode 404
         continue
       }
     }
+  }
+
+  if ($requestPath -eq "/cameras") {
+    if ($request.HttpMethod -eq "GET") {
+      $items = @()
+      $stalePaths = @()
+      $now = [DateTime]::UtcNow
+      foreach ($path in $rooms.Keys) {
+        $room = $rooms[$path]
+        $lastSeen = $room.LastSeen
+        $isStale = $true
+        if ($lastSeen) {
+          $age = ($now - $lastSeen).TotalSeconds
+          $isStale = $age -gt $cameraTimeoutSeconds
+        }
+        if ($isStale) {
+          $stalePaths += $path
+          continue
+        }
+        $items += @{
+          id = $(if ($room.Id) { $room.Id } else { $path })
+          name = $room.Name
+          path = $path
+          active = [bool]$room.Offer
+          updated = $room.Updated.ToString("o")
+          lastSeen = $(if ($room.LastSeen) { $room.LastSeen.ToString("o") } else { $null })
+        }
+      }
+      foreach ($path in $stalePaths) {
+        $rooms.Remove($path) | Out-Null
+      }
+      Send-JsonResponse -Response $response -StatusCode 200 -Payload $items
+      continue
+    }
+
+    Send-EmptyResponse -Response $response -StatusCode 405
+    continue
   }
 
   $relativePath = $request.Url.AbsolutePath.TrimStart("/")

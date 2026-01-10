@@ -27,6 +27,14 @@
       </section>
 
       <section id="grid" class="grid"></section>
+
+      <section class="panel log-panel">
+        <div class="log">
+          <div class="log-title">Logs</div>
+          <pre id="log"></pre>
+          <button id="clearLog" class="btn ghost small">Limpar logs</button>
+        </div>
+      </section>
     </main>
 
     <template id="camera-card">
@@ -43,16 +51,12 @@
           <div class="card-actions">
             <button class="btn connect">Conectar</button>
             <button class="btn ghost disconnect hidden">Desconectar</button>
-            <select class="orientation-select" title="Orientacao do video">
-              <option value="landscape">Paisagem</option>
-              <option value="portrait">Retrato</option>
-            </select>
-            <button class="btn ghost fullscreen" type="button">Tela cheia</button>
-            <select class="format-select" title="Formato de gravacao">
-              <option value="webm">WebM</option>
+            <button class="btn ghost fullscreen hidden" type="button">Tela cheia</button>
+            <select class="format-select hidden" title="Formato de gravacao">
               <option value="mp4">MP4</option>
+              <option value="webm">WebM</option>
             </select>
-            <button class="btn record" disabled>Gravar</button>
+            <button class="btn record hidden" disabled>Gravar</button>
             <button class="btn ghost stop-record hidden" disabled>Parar</button>
           </div>
         </div>
