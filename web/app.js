@@ -1,5 +1,7 @@
 const DEFAULT_SIGNAL_BASE = window.location.origin;
+const DEFAULT_MEDIA_BASE = `${window.location.protocol}//${window.location.hostname}:8889`;
 const baseUrlInput = document.getElementById("baseUrl");
+const mediaBaseInput = document.getElementById("mediaBase");
 const reloadButton = document.getElementById("reload");
 const grid = document.getElementById("grid");
 const template = document.getElementById("camera-card");
@@ -16,6 +18,11 @@ function normalizeBaseUrl(url) {
   return url.replace(/\/+$/, "");
 }
 
+function normalizeMediaBase(url) {
+  if (!url) return DEFAULT_MEDIA_BASE;
+  return url.replace(/\/+$/, "");
+}
+
 function logLine(message) {
   if (!logEl) return;
   const time = new Date().toISOString().slice(11, 19);
@@ -27,6 +34,16 @@ function buildSignalUrl(baseUrl, endpoint, path) {
   const base = normalizeBaseUrl(baseUrl);
   const query = path ? `?path=${encodeURIComponent(path)}` : "";
   return `${base}/signal/${endpoint}${query}`;
+}
+
+function buildWhepUrls(baseUrl, path) {
+  const base = normalizeMediaBase(baseUrl);
+  const encoded = encodeURIComponent(path);
+  return [
+    `${base}/whep/${encoded}`,
+    `${base}/${encoded}/whep`,
+    `${base}/whep?path=${encoded}`,
+  ];
 }
 
 function delay(ms) {
@@ -80,6 +97,52 @@ async function getSignal(baseUrl, endpoint, path) {
     throw new Error(`Signal error: ${response.status}`);
   }
   return response.json();
+}
+
+async function postWhep(baseUrl, path, sdp) {
+  const urls = buildWhepUrls(baseUrl, path);
+  let lastError;
+  for (const url of urls) {
+    logLine(`WHEP POST -> ${url}`);
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/sdp",
+      },
+      body: sdp,
+    });
+    if (response.ok) {
+      const answerSdp = await response.text();
+      const location = response.headers.get("location");
+      return { answerSdp, location };
+    }
+    let detail = "";
+    try {
+      detail = (await response.text()).trim();
+    } catch {
+      detail = "";
+    }
+    const suffix = detail ? ` - ${detail}` : "";
+    lastError = new Error(`WHEP ${response.status}${suffix}`);
+    if (response.status === 404 || response.status === 405) {
+      continue;
+    }
+    throw lastError;
+  }
+  throw lastError || new Error("WHEP falhou");
+}
+
+async function deleteWhep(baseUrl, location) {
+  if (!location) return;
+  const base = normalizeMediaBase(baseUrl);
+  let resourceUrl = location;
+  try {
+    resourceUrl = new URL(location, base).toString();
+  } catch {
+    resourceUrl = `${base}${location.startsWith("/") ? "" : "/"}${location}`;
+  }
+  logLine(`WHEP DELETE -> ${resourceUrl}`);
+  await fetch(resourceUrl, { method: "DELETE" });
 }
 
 function setStatus(statusEl, text, kind) {
@@ -361,12 +424,60 @@ async function startDirectStream({ id, videoEl, baseUrl, path, statusEl, session
   return pc;
 }
 
+async function startWhepStream({ videoEl, mediaBase, path, statusEl, session, onDisconnect }) {
+  const pc = new RTCPeerConnection();
+  session.pc = pc;
+  session.mode = "whep";
+  session.whepBase = normalizeMediaBase(mediaBase);
+
+  pc.addTransceiver("video", { direction: "recvonly" });
+  pc.addTransceiver("audio", { direction: "recvonly" });
+
+  pc.addEventListener("track", (event) => {
+    if (event.streams && event.streams[0]) {
+      videoEl.srcObject = event.streams[0];
+      logLine(`[${path}] Track recebido (WHEP)`);
+    }
+  });
+
+  pc.addEventListener("connectionstatechange", () => {
+    logLine(`[${path}] Connection state: ${pc.connectionState}`);
+    if (pc.connectionState === "connected") {
+      setStatus(statusEl, "Conectado", "ok");
+    }
+    if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+      setStatus(statusEl, "Falha na conexao", "err");
+      if (onDisconnect) {
+        onDisconnect();
+      }
+    }
+  });
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await waitForIceGathering(pc);
+
+  const { answerSdp, location } = await postWhep(session.whepBase, path, pc.localDescription.sdp);
+  session.whepResource = location;
+  await pc.setRemoteDescription({ type: "answer", sdp: answerSdp });
+  logLine(`[${path}] Answer recebido (WHEP)`);
+  setStatus(statusEl, "Conectando...");
+
+  return pc;
+}
+
 function stopStream(id, videoEl, statusEl) {
   const session = activePeers.get(id);
   if (session) {
     session.stopped = true;
     if (session.pc) {
       session.pc.close();
+    }
+    if (session.mode === "whep" && session.whepBase && session.whepResource) {
+      deleteWhep(session.whepBase, session.whepResource).catch((error) => {
+        console.error(error);
+        logLine(`[${id}] Falha ao encerrar WHEP`);
+      });
     }
     activePeers.delete(id);
   }
@@ -402,7 +513,44 @@ function renderCameras(cameras) {
     nameEl.setAttribute("spellcheck", "false");
     nameEl.dataset.baseName = baseName;
     nameEl.title = "Clique para renomear";
-    setStatus(statusEl, "Aguardando");
+
+    const source = (camera.source || "webrtc").toString().toLowerCase();
+    const isWebrtc = source === "webrtc";
+    const rtspConfigured =
+      typeof camera.rtspConfigured === "boolean" ? camera.rtspConfigured : true;
+    if (!isWebrtc) {
+      const parts = ["IP camera"];
+      if (camera.host) {
+        parts.push(camera.host);
+      }
+      if (camera.rtspReachable === true) {
+        parts.push("RTSP ok");
+      }
+      if (camera.rtspReachable === false) {
+        parts.push("RTSP off");
+      }
+      if (!rtspConfigured) {
+        parts.push("RTSP nao configurado");
+      }
+      let kind = camera.rtspReachable === true ? "ok" : camera.rtspReachable === false ? "err" : undefined;
+      if (!rtspConfigured) {
+        kind = "err";
+      }
+      setStatus(statusEl, parts.join(" - "), kind);
+      connectBtn.textContent = "Assistir";
+      if (!rtspConfigured) {
+        connectBtn.classList.add("hidden");
+        disconnectBtn.classList.add("hidden");
+      } else {
+        connectBtn.classList.remove("hidden");
+        disconnectBtn.classList.add("hidden");
+      }
+    } else {
+      setStatus(statusEl, "Aguardando");
+      connectBtn.textContent = "Conectar";
+      connectBtn.classList.remove("hidden");
+      disconnectBtn.classList.add("hidden");
+    }
     recordBtn.disabled = true;
     stopRecordBtn.disabled = true;
 
@@ -455,28 +603,45 @@ function renderCameras(cameras) {
       const id = card.dataset.id;
       if (activePeers.has(id)) return;
       logLine(`[${cameraPath}] Conectar acionado`);
-      const session = { stopped: false, pc: null };
+      const session = { stopped: false, pc: null, mode: isWebrtc ? "webrtc" : "whep" };
       activePeers.set(id, session);
-      setStatus(statusEl, "Aguardando publisher...");
+      setStatus(statusEl, isWebrtc ? "Aguardando publisher..." : "Conectando camera IP...");
       connectBtn.disabled = true;
 
+      const onDisconnect = () => {
+        stopRecording(id, recordUi);
+        setConnectedUi(false);
+        disconnectBtn.classList.add("hidden");
+        connectBtn.classList.remove("hidden");
+        recordBtn.disabled = true;
+        stopRecordBtn.disabled = true;
+      };
+
       try {
-        const pc = await startDirectStream({
-          id,
-          videoEl,
-          baseUrl: baseUrlInput.value.trim(),
-          path: cameraPath,
-          statusEl,
-          session,
-          onDisconnect: () => {
-            stopRecording(id, recordUi);
-            setConnectedUi(false);
-            disconnectBtn.classList.add("hidden");
-            connectBtn.classList.remove("hidden");
-            recordBtn.disabled = true;
-            stopRecordBtn.disabled = true;
-          },
-        });
+        if (isWebrtc) {
+          await startDirectStream({
+            id,
+            videoEl,
+            baseUrl: baseUrlInput.value.trim(),
+            path: cameraPath,
+            statusEl,
+            session,
+            onDisconnect,
+          });
+        } else {
+          const mediaBaseValue = mediaBaseInput ? mediaBaseInput.value.trim() : "";
+          if (!mediaBaseValue) {
+            throw new Error("Media Base URL vazio");
+          }
+          await startWhepStream({
+            videoEl,
+            mediaBase: mediaBaseValue,
+            path: cameraPath,
+            statusEl,
+            session,
+            onDisconnect,
+          });
+        }
         if (session.stopped) {
           return;
         }
@@ -506,7 +671,9 @@ function renderCameras(cameras) {
       const id = card.dataset.id;
       stopRecording(id, recordUi);
       stopStream(id, videoEl, statusEl);
-      resetSignal(baseUrlInput.value.trim(), cameraPath);
+      if (isWebrtc) {
+        resetSignal(baseUrlInput.value.trim(), cameraPath);
+      }
       logLine(`[${cameraPath}] Desconectado`);
       disconnectBtn.classList.add("hidden");
       connectBtn.classList.remove("hidden");
@@ -546,7 +713,7 @@ async function loadCameras() {
     logLine("Carregando cameras...");
     const data = await fetchCamerasFromServer();
     if (!data.length) {
-      grid.innerHTML = "<div class=\"status\">Nenhuma camera ativa. Abra publish.html no celular.</div>";
+      grid.innerHTML = "<div class=\"status\">Nenhuma camera ativa. Abra publish.html no dispositivo a ser utilizado como camera.</div>";
       cameraPaths.clear();
       logLine("Nenhuma camera ativa");
       return;
@@ -566,6 +733,11 @@ function init() {
   if (baseUrlInput.value.includes(":8889")) {
     baseUrlInput.value = DEFAULT_SIGNAL_BASE;
   }
+  if (mediaBaseInput) {
+    const storedMedia = localStorage.getItem("mediaBase");
+    mediaBaseInput.value = storedMedia || DEFAULT_MEDIA_BASE;
+    logLine(`Media base: ${mediaBaseInput.value}`);
+  }
   logLine(`Init: base=${baseUrlInput.value}`);
 
   baseUrlInput.addEventListener("change", () => {
@@ -573,6 +745,12 @@ function init() {
     loadCameras();
     logLine(`Base alterada: ${baseUrlInput.value.trim()}`);
   });
+  if (mediaBaseInput) {
+    mediaBaseInput.addEventListener("change", () => {
+      localStorage.setItem("mediaBase", mediaBaseInput.value.trim());
+      logLine(`Media base alterada: ${mediaBaseInput.value.trim()}`);
+    });
+  }
   reloadButton.addEventListener("click", loadCameras);
   loadCameras();
   if (clearLogBtn && logEl) {

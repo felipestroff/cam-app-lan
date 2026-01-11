@@ -1,0 +1,6 @@
+[
+  {
+    "id": "onvif-EXEMPLO-ID",
+    "rtspUrl": "rtsp://usuario:senha@192.168.0.50:554/stream1"
+  }
+]

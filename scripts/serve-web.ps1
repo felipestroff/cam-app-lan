@@ -5,6 +5,7 @@ param(
 )
 
 $resolvedRoot = Resolve-Path $Root
+$repoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $listener = [System.Net.HttpListener]::new()
 $prefix = "http://${HostName}:$Port/"
 $listener.Prefixes.Add($prefix)
@@ -28,7 +29,12 @@ $mimeTypes = @{
 }
 
 $rooms = @{}
-$cameraTimeoutSeconds = 30
+$webrtcTimeoutSeconds = 30
+$ipCameraTimeoutSeconds = 0
+$discoveredFile = Join-Path $resolvedRoot "ip-cameras.json"
+$fallbackDiscoveredFile = Join-Path $repoRoot "web\\ip-cameras.json"
+$rtspOverridesFile = Join-Path $PSScriptRoot "ip-cameras-rtsp.json"
+$cachedIpCameras = @()
 
 function Add-CorsHeaders {
   param([System.Net.HttpListenerResponse]$Response)
@@ -88,6 +94,26 @@ function Read-JsonBody {
     return $null
   }
   return $body | ConvertFrom-Json
+}
+
+function Read-JsonFile {
+  param([string]$FilePath)
+  if (-not (Test-Path $FilePath)) {
+    return @()
+  }
+  try {
+    $raw = Get-Content -Path $FilePath -Raw -Encoding UTF8
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+      return @()
+    }
+    $data = $raw | ConvertFrom-Json
+    if ($data -isnot [System.Array]) {
+      return @($data)
+    }
+    return $data
+  } catch {
+    return $null
+  }
 }
 
 function Get-QueryValue {
@@ -278,13 +304,32 @@ while ($listener.IsListening) {
       $items = @()
       $stalePaths = @()
       $now = [DateTime]::UtcNow
+      $rtspOverrides = @{}
+      if (Test-Path $rtspOverridesFile) {
+        try {
+          $rawOverrides = Get-Content -Path $rtspOverridesFile -Raw
+          if (-not [string]::IsNullOrWhiteSpace($rawOverrides)) {
+            $parsedOverrides = $rawOverrides | ConvertFrom-Json
+            if ($parsedOverrides -isnot [System.Array]) {
+              $parsedOverrides = @($parsedOverrides)
+            }
+            foreach ($override in $parsedOverrides) {
+              if ($override.id -and $override.rtspUrl) {
+                $rtspOverrides[$override.id.ToString()] = $true
+              }
+            }
+          }
+        } catch {
+          # ignore invalid overrides
+        }
+      }
       foreach ($path in $rooms.Keys) {
         $room = $rooms[$path]
         $lastSeen = $room.LastSeen
         $isStale = $true
         if ($lastSeen) {
           $age = ($now - $lastSeen).TotalSeconds
-          $isStale = $age -gt $cameraTimeoutSeconds
+          $isStale = $age -gt $webrtcTimeoutSeconds
         }
         if ($isStale) {
           $stalePaths += $path
@@ -294,9 +339,52 @@ while ($listener.IsListening) {
           id = $(if ($room.Id) { $room.Id } else { $path })
           name = $room.Name
           path = $path
+          source = "webrtc"
           active = [bool]$room.Offer
           updated = $room.Updated.ToString("o")
           lastSeen = $(if ($room.LastSeen) { $room.LastSeen.ToString("o") } else { $null })
+        }
+      }
+      $discovered = @()
+      $pathsToCheck = @($discoveredFile, $fallbackDiscoveredFile) | Select-Object -Unique
+      foreach ($filePath in $pathsToCheck) {
+        $data = Read-JsonFile -FilePath $filePath
+        if ($null -eq $data) {
+          continue
+        }
+        if ($data.Count -gt 0) {
+          $discovered = $data
+          break
+        }
+      }
+      if ($discovered.Count -eq 0 -and $cachedIpCameras.Count -gt 0) {
+        $discovered = $cachedIpCameras
+      }
+      if ($discovered.Count -gt 0) {
+        $cachedIpCameras = $discovered
+      }
+      foreach ($cam in $discovered) {
+        $lastSeenValue = $null
+        if ($cam.lastSeen) {
+          [DateTime]::TryParse($cam.lastSeen.ToString(), [ref]$lastSeenValue) | Out-Null
+        }
+        if ($lastSeenValue -and $ipCameraTimeoutSeconds -gt 0) {
+          $age = ($now - $lastSeenValue).TotalSeconds
+          if ($age -gt $ipCameraTimeoutSeconds) {
+            continue
+          }
+        }
+        $items += @{
+          id = $cam.id
+          name = $cam.name
+          path = $cam.path
+          source = $(if ($cam.source) { $cam.source } else { "onvif" })
+          host = $cam.host
+          rtspReachable = $cam.rtspReachable
+          rtspConfigured = $(if ($cam.id -and $rtspOverrides.ContainsKey($cam.id.ToString())) { $true } else { $false })
+          active = $(if ($null -ne $cam.active) { [bool]$cam.active } else { $true })
+          updated = $(if ($cam.updated) { $cam.updated.ToString() } else { $now.ToString("o") })
+          lastSeen = $(if ($cam.lastSeen) { $cam.lastSeen.ToString() } else { $null })
         }
       }
       foreach ($path in $stalePaths) {
