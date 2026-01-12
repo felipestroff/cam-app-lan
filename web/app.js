@@ -12,6 +12,9 @@ const activePeers = new Map();
 const activeRecorders = new Map();
 const lastAnsweredOffer = new Map();
 const cameraPaths = new Map();
+const audioButtons = new Map();
+const audioVideos = new Map();
+let activeAudioId = null;
 
 function normalizeBaseUrl(url) {
   if (!url) return DEFAULT_SIGNAL_BASE;
@@ -28,6 +31,55 @@ function logLine(message) {
   const time = new Date().toISOString().slice(11, 19);
   logEl.textContent += `[${time}] ${message}\n`;
   logEl.scrollTop = logEl.scrollHeight;
+}
+
+function updateAudioUi() {
+  for (const [id, videoEl] of audioVideos.entries()) {
+    const isActive = id === activeAudioId;
+    videoEl.muted = !isActive;
+    if (isActive) {
+      const playPromise = videoEl.play();
+      if (playPromise && typeof playPromise.catch === "function") {
+        playPromise.catch(() => {});
+      }
+    }
+  }
+  for (const [id, button] of audioButtons.entries()) {
+    const isActive = id === activeAudioId;
+    button.textContent = isActive ? "Audio ativo" : "Audio";
+    button.classList.toggle("active", isActive);
+    button.disabled = !activePeers.has(id);
+  }
+}
+
+function setActiveAudio(id) {
+  const path = cameraPaths.get(id) || id;
+  if (activeAudioId === id) {
+    activeAudioId = null;
+    logLine(`[${path}] Audio desligado`);
+  } else {
+    activeAudioId = id;
+    logLine(`[${path}] Audio selecionado`);
+  }
+  updateAudioUi();
+}
+
+function clearActiveAudio(id) {
+  if (activeAudioId !== id) return;
+  const path = cameraPaths.get(id) || id;
+  activeAudioId = null;
+  logLine(`[${path}] Audio desligado`);
+  updateAudioUi();
+}
+
+function closeRecordOptions(exceptOptions) {
+  const options = document.querySelectorAll(".record-options");
+  options.forEach((item) => {
+    if (exceptOptions && item === exceptOptions) {
+      return;
+    }
+    item.classList.add("hidden");
+  });
 }
 
 function buildSignalUrl(baseUrl, endpoint, path) {
@@ -149,6 +201,11 @@ function setStatus(statusEl, text, kind) {
   statusEl.textContent = text;
   statusEl.classList.remove("ok", "err");
   if (kind) statusEl.classList.add(kind);
+}
+
+function setDotActive(dotEl, isActive) {
+  if (!dotEl) return;
+  dotEl.classList.toggle("active", isActive);
 }
 
 function offerFingerprint(offer) {
@@ -274,14 +331,19 @@ function stopRecording(id, ui) {
     ui.recIndicator.classList.add("hidden");
     ui.stopRecordBtn.classList.add("hidden");
     ui.stopRecordBtn.disabled = true;
-    ui.recordBtn.disabled = !connected;
-    if (ui.formatSelect) {
-      ui.formatSelect.disabled = false;
+    if (ui.recordBtn) {
+      ui.recordBtn.disabled = !connected;
+    }
+    if (ui.recordOptions) {
+      ui.recordOptions.classList.add("hidden");
+    }
+    if (ui.recordMenu) {
+      ui.recordMenu.classList.toggle("hidden", !connected);
     }
   }
 }
 
-function startRecording(id, camera, stream, ui, statusEl) {
+function startRecording(id, camera, stream, ui, statusEl, format) {
   if (activeRecorders.has(id)) return;
   if (!stream) {
     setStatus(statusEl, "Sem stream para gravar", "err");
@@ -294,7 +356,7 @@ function startRecording(id, camera, stream, ui, statusEl) {
     return;
   }
 
-  const selectedFormat = ui.formatSelect ? ui.formatSelect.value : "webm";
+  const selectedFormat = format || "mp4";
   const selectionLabel = selectedFormat.toUpperCase();
 
   let recorder;
@@ -333,9 +395,14 @@ function startRecording(id, camera, stream, ui, statusEl) {
       ui.recIndicator.classList.add("hidden");
       ui.stopRecordBtn.classList.add("hidden");
       ui.stopRecordBtn.disabled = true;
-      ui.recordBtn.disabled = !connected;
-      if (ui.formatSelect) {
-        ui.formatSelect.disabled = false;
+      if (ui.recordBtn) {
+        ui.recordBtn.disabled = !connected;
+      }
+      if (ui.recordOptions) {
+        ui.recordOptions.classList.add("hidden");
+      }
+      if (ui.recordMenu) {
+        ui.recordMenu.classList.toggle("hidden", !connected);
       }
     }
   });
@@ -348,11 +415,16 @@ function startRecording(id, camera, stream, ui, statusEl) {
   recorder.start();
   logLine(`[${id}] Gravacao iniciada (${selectionLabel})`);
   ui.recIndicator.classList.remove("hidden");
-  ui.recordBtn.disabled = true;
+  if (ui.recordBtn) {
+    ui.recordBtn.disabled = true;
+  }
   ui.stopRecordBtn.disabled = false;
   ui.stopRecordBtn.classList.remove("hidden");
-  if (ui.formatSelect) {
-    ui.formatSelect.disabled = true;
+  if (ui.recordOptions) {
+    ui.recordOptions.classList.add("hidden");
+  }
+  if (ui.recordMenu) {
+    ui.recordMenu.classList.add("hidden");
   }
 }
 
@@ -374,7 +446,7 @@ async function waitForOffer(baseUrl, path, session, lastFingerprint) {
   throw new Error("Cancelado");
 }
 
-async function startDirectStream({ id, videoEl, baseUrl, path, statusEl, session, onDisconnect }) {
+async function startDirectStream({ id, videoEl, baseUrl, path, statusEl, session, onDisconnect, dotEl }) {
   const lastFingerprint = lastAnsweredOffer.get(id) || "";
   const offer = await waitForOffer(baseUrl, path, session, lastFingerprint);
   if (session.stopped) {
@@ -396,9 +468,11 @@ async function startDirectStream({ id, videoEl, baseUrl, path, statusEl, session
     logLine(`[${path}] Connection state: ${pc.connectionState}`);
     if (pc.connectionState === "connected") {
       setStatus(statusEl, "Conectado", "ok");
+      setDotActive(dotEl, true);
     }
     if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
       setStatus(statusEl, "Falha na conexao", "err");
+      setDotActive(dotEl, false);
       if (onDisconnect) {
         onDisconnect();
       }
@@ -424,7 +498,7 @@ async function startDirectStream({ id, videoEl, baseUrl, path, statusEl, session
   return pc;
 }
 
-async function startWhepStream({ videoEl, mediaBase, path, statusEl, session, onDisconnect }) {
+async function startWhepStream({ videoEl, mediaBase, path, statusEl, session, onDisconnect, dotEl }) {
   const pc = new RTCPeerConnection();
   session.pc = pc;
   session.mode = "whep";
@@ -444,9 +518,11 @@ async function startWhepStream({ videoEl, mediaBase, path, statusEl, session, on
     logLine(`[${path}] Connection state: ${pc.connectionState}`);
     if (pc.connectionState === "connected") {
       setStatus(statusEl, "Conectado", "ok");
+      setDotActive(dotEl, true);
     }
     if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
       setStatus(statusEl, "Falha na conexao", "err");
+      setDotActive(dotEl, false);
       if (onDisconnect) {
         onDisconnect();
       }
@@ -488,6 +564,8 @@ function stopStream(id, videoEl, statusEl) {
 function renderCameras(cameras) {
   grid.innerHTML = "";
   cameraPaths.clear();
+  audioButtons.clear();
+  audioVideos.clear();
   cameras.forEach((camera) => {
     const node = template.content.cloneNode(true);
     const card = node.querySelector(".card");
@@ -495,17 +573,25 @@ function renderCameras(cameras) {
     const connectBtn = node.querySelector(".connect");
     const disconnectBtn = node.querySelector(".disconnect");
     const fullscreenBtn = node.querySelector(".fullscreen");
-    const formatSelect = node.querySelector(".format-select");
+    const audioBtn = node.querySelector(".audio");
+    const recordMenu = node.querySelector(".record-menu");
     const recordBtn = node.querySelector(".record");
+    const recordOptions = node.querySelector(".record-options");
+    const recordOptionButtons = Array.from(node.querySelectorAll(".record-option"));
     const stopRecordBtn = node.querySelector(".stop-record");
     const recIndicator = node.querySelector(".rec-indicator");
     const statusEl = node.querySelector(".status");
+    const dotEl = node.querySelector(".dot");
     const videoWrap = node.querySelector(".video-wrap");
     const videoEl = node.querySelector("video");
     card.dataset.id = camera.id || camera.path;
     const cameraId = card.dataset.id;
     const cameraPath = camera.path || camera.id || cameraId;
     cameraPaths.set(cameraId, cameraPath);
+    audioVideos.set(cameraId, videoEl);
+    if (audioBtn) {
+      audioButtons.set(cameraId, audioBtn);
+    }
     const storedAlias = getStoredAlias(cameraId);
     const baseName = camera.name || camera.path || "Camera";
     nameEl.textContent = storedAlias || baseName;
@@ -516,6 +602,7 @@ function renderCameras(cameras) {
 
     const source = (camera.source || "webrtc").toString().toLowerCase();
     const isWebrtc = source === "webrtc";
+    setDotActive(dotEl, false);
     const rtspConfigured =
       typeof camera.rtspConfigured === "boolean" ? camera.rtspConfigured : true;
     if (!isWebrtc) {
@@ -538,6 +625,7 @@ function renderCameras(cameras) {
       }
       setStatus(statusEl, parts.join(" - "), kind);
       connectBtn.textContent = "Assistir";
+      connectBtn.dataset.defaultLabel = "Assistir";
       if (!rtspConfigured) {
         connectBtn.classList.add("hidden");
         disconnectBtn.classList.add("hidden");
@@ -548,32 +636,36 @@ function renderCameras(cameras) {
     } else {
       setStatus(statusEl, "Aguardando");
       connectBtn.textContent = "Conectar";
+      connectBtn.dataset.defaultLabel = "Conectar";
       connectBtn.classList.remove("hidden");
       disconnectBtn.classList.add("hidden");
     }
     recordBtn.disabled = true;
     stopRecordBtn.disabled = true;
 
-    const recordUi = { recordBtn, stopRecordBtn, recIndicator, formatSelect };
+    const recordUi = { recordMenu, recordBtn, recordOptions, stopRecordBtn, recIndicator };
 
     const setConnectedUi = (connected) => {
       if (fullscreenBtn) {
         fullscreenBtn.classList.toggle("hidden", !connected);
       }
-      if (formatSelect) {
-        formatSelect.classList.toggle("hidden", !connected);
-        formatSelect.disabled = !connected ? false : formatSelect.disabled;
+      if (audioBtn) {
+        audioBtn.classList.toggle("hidden", !connected);
       }
-      if (recordBtn) {
-        recordBtn.classList.toggle("hidden", !connected);
+      if (recordMenu) {
+        recordMenu.classList.toggle("hidden", !connected);
       }
       if (!connected) {
         recIndicator.classList.add("hidden");
         stopRecordBtn.classList.add("hidden");
+        if (recordOptions) {
+          recordOptions.classList.add("hidden");
+        }
       }
     };
 
     setConnectedUi(false);
+    updateAudioUi();
 
     nameEl.addEventListener("keydown", (event) => {
       if (event.key === "Enter") {
@@ -598,6 +690,42 @@ function renderCameras(cameras) {
         logLine(`[${cameraPath}] Tela cheia alternada`);
       });
     }
+    if (audioBtn) {
+      audioBtn.addEventListener("click", () => {
+        const id = card.dataset.id;
+        if (!activePeers.has(id)) {
+          return;
+        }
+        setActiveAudio(id);
+      });
+    }
+    if (recordBtn) {
+      recordBtn.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const id = card.dataset.id;
+        if (!activePeers.has(id) || activeRecorders.has(id)) {
+          return;
+        }
+        if (!recordOptions) {
+          return;
+        }
+        const shouldOpen = recordOptions.classList.contains("hidden");
+        closeRecordOptions(recordOptions);
+        recordOptions.classList.toggle("hidden", !shouldOpen);
+      });
+    }
+    recordOptionButtons.forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.stopPropagation();
+        const id = card.dataset.id;
+        if (!activePeers.has(id)) {
+          return;
+        }
+        const format = button.dataset.format || "mp4";
+        closeRecordOptions();
+        startRecording(id, camera, videoEl.srcObject, recordUi, statusEl, format);
+      });
+    });
 
     connectBtn.addEventListener("click", async () => {
       const id = card.dataset.id;
@@ -606,6 +734,7 @@ function renderCameras(cameras) {
       const session = { stopped: false, pc: null, mode: isWebrtc ? "webrtc" : "whep" };
       activePeers.set(id, session);
       setStatus(statusEl, isWebrtc ? "Aguardando publisher..." : "Conectando camera IP...");
+      connectBtn.textContent = "Carregando...";
       connectBtn.disabled = true;
 
       const onDisconnect = () => {
@@ -613,8 +742,16 @@ function renderCameras(cameras) {
         setConnectedUi(false);
         disconnectBtn.classList.add("hidden");
         connectBtn.classList.remove("hidden");
-        recordBtn.disabled = true;
+        connectBtn.textContent = connectBtn.dataset.defaultLabel || "Conectar";
+        if (recordBtn) {
+          recordBtn.disabled = true;
+        }
+        if (recordOptions) {
+          recordOptions.classList.add("hidden");
+        }
         stopRecordBtn.disabled = true;
+        clearActiveAudio(id);
+        setDotActive(dotEl, false);
       };
 
       try {
@@ -627,6 +764,7 @@ function renderCameras(cameras) {
             statusEl,
             session,
             onDisconnect,
+            dotEl,
           });
         } else {
           const mediaBaseValue = mediaBaseInput ? mediaBaseInput.value.trim() : "";
@@ -640,6 +778,7 @@ function renderCameras(cameras) {
             statusEl,
             session,
             onDisconnect,
+            dotEl,
           });
         }
         if (session.stopped) {
@@ -648,7 +787,10 @@ function renderCameras(cameras) {
         connectBtn.classList.add("hidden");
         disconnectBtn.classList.remove("hidden");
         setConnectedUi(true);
-        recordBtn.disabled = false;
+        if (recordBtn) {
+          recordBtn.disabled = false;
+        }
+        updateAudioUi();
         logLine(`[${cameraPath}] Conectado`);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Falha";
@@ -662,8 +804,13 @@ function renderCameras(cameras) {
           logLine(`[${cameraPath}] Erro ao conectar: ${message}`);
         }
         activePeers.delete(id);
+        clearActiveAudio(id);
+        connectBtn.textContent = connectBtn.dataset.defaultLabel || "Conectar";
       } finally {
         connectBtn.disabled = false;
+        if (!connectBtn.classList.contains("hidden")) {
+          connectBtn.textContent = connectBtn.dataset.defaultLabel || "Conectar";
+        }
       }
     });
 
@@ -674,17 +821,20 @@ function renderCameras(cameras) {
       if (isWebrtc) {
         resetSignal(baseUrlInput.value.trim(), cameraPath);
       }
+      clearActiveAudio(id);
       logLine(`[${cameraPath}] Desconectado`);
       disconnectBtn.classList.add("hidden");
       connectBtn.classList.remove("hidden");
+      connectBtn.textContent = connectBtn.dataset.defaultLabel || "Conectar";
+      setDotActive(dotEl, false);
       setConnectedUi(false);
-      recordBtn.disabled = true;
+      if (recordBtn) {
+        recordBtn.disabled = true;
+      }
+      if (recordOptions) {
+        recordOptions.classList.add("hidden");
+      }
       stopRecordBtn.disabled = true;
-    });
-
-    recordBtn.addEventListener("click", () => {
-      const id = card.dataset.id;
-      startRecording(id, camera, videoEl.srcObject, recordUi, statusEl);
     });
 
     stopRecordBtn.addEventListener("click", () => {
@@ -694,6 +844,11 @@ function renderCameras(cameras) {
 
     grid.appendChild(node);
   });
+
+  if (activeAudioId && !audioVideos.has(activeAudioId)) {
+    activeAudioId = null;
+  }
+  updateAudioUi();
 }
 
 async function fetchCamerasFromServer() {
@@ -751,6 +906,12 @@ function init() {
       logLine(`Media base alterada: ${mediaBaseInput.value.trim()}`);
     });
   }
+  document.addEventListener("click", (event) => {
+    if (event.target.closest(".record-menu")) {
+      return;
+    }
+    closeRecordOptions();
+  });
   reloadButton.addEventListener("click", loadCameras);
   loadCameras();
   if (clearLogBtn && logEl) {

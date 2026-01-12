@@ -147,6 +147,18 @@ main {
   border: 1px solid var(--panel-edge);
 }
 
+.btn.stop-record {
+  background: var(--danger);
+  color: #2b0b14;
+  border: 0;
+}
+
+.btn.audio.active {
+  background: var(--accent-2);
+  color: #0b1117;
+  border-color: transparent;
+}
+
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
@@ -283,6 +295,33 @@ main {
   flex-wrap: wrap;
 }
 
+.record-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.record-options {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  box-shadow: 0 12px 20px var(--shadow);
+  z-index: 10;
+  min-width: 120px;
+}
+
+.record-option {
+  width: 100%;
+  text-align: left;
+  font-size: 12px;
+}
+
 .format-select,
 .orientation-select {
   padding: 8px 10px;
@@ -325,6 +364,11 @@ main {
   height: 10px;
   border-radius: 50%;
   background: var(--muted);
+}
+
+.dot.active {
+  background: var(--success);
+  box-shadow: 0 0 8px rgba(110, 231, 183, 0.75);
 }
 
 .video-wrap {

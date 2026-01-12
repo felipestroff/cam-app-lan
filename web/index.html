@@ -56,11 +56,14 @@
             <button class="btn connect">Conectar</button>
             <button class="btn ghost disconnect hidden">Desconectar</button>
             <button class="btn ghost fullscreen hidden" type="button">Tela cheia</button>
-            <select class="format-select hidden" title="Formato de gravacao">
-              <option value="mp4">MP4</option>
-              <option value="webm">WebM</option>
-            </select>
-            <button class="btn record hidden" disabled>Gravar</button>
+            <button class="btn ghost audio hidden" type="button">Audio</button>
+            <div class="record-menu hidden">
+              <button class="btn record" type="button">Gravar</button>
+              <div class="record-options hidden">
+                <button class="btn ghost record-option" type="button" data-format="mp4">MP4</button>
+                <button class="btn ghost record-option" type="button" data-format="webm">WebM</button>
+              </div>
+            </div>
             <button class="btn ghost stop-record hidden" disabled>Parar</button>
           </div>
         </div>

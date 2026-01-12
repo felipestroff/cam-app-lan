@@ -33,7 +33,8 @@ Abra no navegador: `http://SEU_IP_LOCAL:5173` (ex.: `http://192.168.1.6:5173`)
 - Signal Base URL: `http://SEU_IP_LOCAL:5173` (ex.: `http://192.168.1.6:5173`)
 - Media Base URL: `http://SEU_IP_LOCAL:8889` (para cameras IP via MediaMTX)
 - Clique em **Conectar**
-- Opcional: clique em **Gravar** para salvar um `.mp4` no PC
+- Opcional: clique em **Gravar** e escolha o formato para salvar no PC
+- Use o botao **Audio** para ouvir uma camera por vez.
 
 4) Cameras na lista
 - As cameras aparecem automaticamente quando o publisher inicia.
