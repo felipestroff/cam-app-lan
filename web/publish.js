@@ -24,9 +24,11 @@ let restartTimer = null;
 let restartInFlight = false;
 let cameraId = "";
 let heartbeatTimer = null;
+let logVerbose = true;
+let forceHttps = false;
 
 function logLine(message) {
-  if (!logEl) return;
+  if (!logEl || !logVerbose) return;
   const time = new Date().toISOString().slice(11, 19);
   logEl.textContent += `[${time}] ${message}\n`;
   logEl.scrollTop = logEl.scrollHeight;
@@ -50,6 +52,45 @@ function hasActiveStream(input) {
 function normalizeBaseUrl(url) {
   if (!url) return DEFAULT_SIGNAL_BASE;
   return url.replace(/\/+$/, "");
+}
+
+function applyHttpsPolicy() {
+  if (!forceHttps) {
+    return;
+  }
+  if (window.location.protocol !== "https:") {
+    warningEl.classList.remove("hidden");
+    warningEl.textContent = "HTTPS obrigatorio. Abra este publisher via https://SEU_IP_LOCAL:5173.";
+    startBtn.disabled = true;
+    startBtn.classList.remove("hidden");
+    stopBtn.disabled = true;
+    stopBtn.classList.add("hidden");
+    setStatus("HTTPS necessario", "err");
+  }
+}
+
+async function loadServerConfig() {
+  try {
+    const response = await fetch(`${window.location.origin}/config`, { cache: "no-store" });
+    if (!response.ok) {
+      throw new Error(`Config error: ${response.status}`);
+    }
+    const data = await response.json();
+    if (typeof data.logsVerbose === "boolean") {
+      logVerbose = data.logsVerbose;
+    }
+    if (typeof data.forceHttps === "boolean") {
+      forceHttps = data.forceHttps;
+    }
+    if (data.signalBase) {
+      baseInput.value = data.signalBase;
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha";
+    logLine(`Falha ao carregar config: ${message}`);
+  } finally {
+    applyHttpsPolicy();
+  }
 }
 
 function buildSignalUrl(baseUrl, endpoint, path) {
@@ -223,6 +264,11 @@ async function waitForAnswer(baseUrl, path) {
 
 async function startPublish() {
   if (pc) return;
+  if (forceHttps && window.location.protocol !== "https:") {
+    setStatus("HTTPS necessario", "err");
+    warningEl.classList.remove("hidden");
+    return;
+  }
 
   clearRestartTimer();
   stopHeartbeat();
@@ -237,7 +283,9 @@ async function startPublish() {
   }
 
   startBtn.disabled = true;
+  startBtn.classList.add("hidden");
   stopBtn.disabled = false;
+  stopBtn.classList.remove("hidden");
 
   lastBaseUrl = baseUrl;
   lastPath = path;
@@ -358,7 +406,9 @@ async function startPublish() {
       pc = null;
     }
     startBtn.disabled = false;
+    startBtn.classList.remove("hidden");
     stopBtn.disabled = false;
+    stopBtn.classList.add("hidden");
   }
 }
 
@@ -381,7 +431,9 @@ async function stopPublish() {
 
   previewEl.srcObject = null;
   startBtn.disabled = false;
+  startBtn.classList.remove("hidden");
   stopBtn.disabled = true;
+  stopBtn.classList.add("hidden");
   setStatus("Parado");
   logLine("Publish stopped");
 }
@@ -404,6 +456,13 @@ function init() {
   }
 
   logLine(`Init: base=${baseInput.value} path=${pathInput.value}`);
+
+  loadServerConfig().finally(() => {
+    if (!window.isSecureContext && !forceHttps) {
+      warningEl.classList.remove("hidden");
+      logLine("Warning: insecure context");
+    }
+  });
 
   baseInput.addEventListener("change", () => {
     localStorage.setItem("signalBase", baseInput.value.trim());
@@ -432,11 +491,6 @@ function init() {
   window.addEventListener("unhandledrejection", (event) => {
     logLine(`Unhandled rejection: ${formatError(event.reason)}`);
   });
-
-  if (!window.isSecureContext) {
-    warningEl.classList.remove("hidden");
-    logLine("Warning: insecure context");
-  }
 }
 
 init();

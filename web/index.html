@@ -14,18 +14,44 @@
       <p>Viewer simples para conexao direta via WebRTC na LAN.</p>
       <div class="hero-actions">
         <a class="btn ghost" href="publish.html">Usar dispositivo como camera</a>
+        <a class="btn ghost" href="admin.html">Configurar servidor</a>
       </div>
     </header>
 
     <main>
       <section class="controls">
+        <div id="httpsWarning" class="notice hidden">
+          HTTPS obrigatorio. Abra este viewer via https://SEU_IP_LOCAL:5173.
+        </div>
         <label class="field">
-          <span>Signal Base URL</span>
-          <input id="baseUrl" type="text" placeholder="http://SEU_IP_LOCAL:5173" />
+          <span>
+            Signal Base URL
+            <span
+              class="help-icon"
+              role="button"
+              tabindex="0"
+              aria-label="Ajuda: URL do servidor de sinalizacao (serve-web.ps1). Configure em admin.html."
+              data-tooltip="URL do servidor de sinalizacao (serve-web.ps1). Configure em admin.html."
+            >?</span>
+          </span>
+          <input id="baseUrl" type="text" />
         </label>
         <label class="field">
-          <span>Media Base URL</span>
-          <input id="mediaBase" type="text" placeholder="http://SEU_IP_LOCAL:8889" />
+          <span>
+            Media Base URL
+            <span
+              class="help-icon"
+              role="button"
+              tabindex="0"
+              aria-label="Ajuda: URL do MediaMTX para cameras IP (WHEP). Configure em admin.html."
+              data-tooltip="URL do MediaMTX para cameras IP (WHEP). Configure em admin.html."
+            >?</span>
+          </span>
+          <input id="mediaBase" type="text" />
+        </label>
+        <label class="checkbox">
+          <input id="saveServer" type="checkbox" />
+          Salvar gravacoes no servidor
         </label>
         <button id="reload" class="btn">Recarregar lista</button>
       </section>
@@ -69,6 +95,22 @@
         </div>
         <div class="video-wrap">
           <video playsinline autoplay muted></video>
+        </div>
+        <div class="motion-controls hidden">
+          <label class="motion-toggle">
+            <input type="checkbox" class="motion-enable" />
+            Deteccao de movimento
+          </label>
+          <label class="motion-field">
+            Sensibilidade
+            <input type="range" class="motion-sensitivity" min="10" max="100" value="60" />
+            <span class="motion-value">60</span>
+          </label>
+          <label class="motion-field">
+            Parar apos
+            <input type="range" class="motion-stop" min="3" max="20" value="6" />
+            <span class="motion-stop-value">6s</span>
+          </label>
         </div>
         <div class="status">Aguardando</div>
       </article>

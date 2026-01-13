@@ -25,16 +25,34 @@
         </div>
 
         <label class="field">
-          <span>Signal Base URL</span>
+          <span>
+            Signal Base URL
+            <span
+              class="help-icon"
+              role="button"
+              tabindex="0"
+              aria-label="Ajuda: URL do servidor de sinalizacao (serve-web.ps1). Exemplo: http://IP_DO_PC:5173"
+              data-tooltip="URL do servidor de sinalizacao (serve-web.ps1). Exemplo: http://IP_DO_PC:5173"
+            >?</span>
+          </span>
           <input id="signalBase" type="text" placeholder="http://SEU_IP_LOCAL:5173" />
         </label>
 
         <label class="field">
-          <span>Nome da camera</span>
+          <span>
+            Nome da camera
+            <span
+              class="help-icon"
+              role="button"
+              tabindex="0"
+              aria-label="Ajuda: apelido exibido no viewer. Nao afeta a conexao."
+              data-tooltip="Apelido exibido no viewer. Nao afeta a conexao."
+            >?</span>
+          </span>
           <input id="name" type="text" placeholder="Minha camera" />
         </label>
 
-        <label class="field">
+        <label class="field hidden">
           <span>Path</span>
           <input id="path" type="text" placeholder="cam1" />
         </label>
@@ -57,7 +75,7 @@
 
         <div class="actions">
           <button id="start" class="btn">Iniciar</button>
-          <button id="stop" class="btn ghost" disabled>Parar</button>
+          <button id="stop" class="btn ghost hidden" disabled>Parar</button>
         </div>
 
         <div id="status" class="status">Pronto</div>

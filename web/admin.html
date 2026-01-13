@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cam App Admin</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="bg-grid"></div>
+    <header class="hero">
+      <div class="badge">ADMIN</div>
+      <h1>Cam App Admin</h1>
+      <p>Configuracoes do servidor para o ambiente local.</p>
+      <div class="hero-actions">
+        <a class="btn ghost" href="index.html">Abrir Viewer</a>
+        <a class="btn ghost" href="publish.html">Abrir Publisher</a>
+      </div>
+    </header>
+
+    <main class="publisher">
+      <section class="panel">
+        <label class="field">
+          <span>
+            Signal Base URL
+            <span
+              class="help-icon"
+              role="button"
+              tabindex="0"
+              aria-label="Ajuda: URL do servidor de sinalizacao (serve-web.ps1). Exemplo: http://IP_DO_PC:5173"
+              data-tooltip="URL do servidor de sinalizacao (serve-web.ps1). Exemplo: http://IP_DO_PC:5173"
+            >?</span>
+          </span>
+          <input id="signalBase" type="text" />
+        </label>
+        <p class="hint">Deixe vazio para usar o padrao (URL atual).</p>
+
+        <label class="field">
+          <span>
+            Media Base URL
+            <span
+              class="help-icon"
+              role="button"
+              tabindex="0"
+              aria-label="Ajuda: URL do MediaMTX para cameras IP (WHEP). Exemplo: http://IP_DO_PC:8889"
+              data-tooltip="URL do MediaMTX para cameras IP (WHEP). Exemplo: http://IP_DO_PC:8889"
+            >?</span>
+          </span>
+          <input id="mediaBase" type="text" />
+        </label>
+        <p class="hint">Deixe vazio para usar o padrao (URL atual).</p>
+        <div class="row">
+          <span class="status" id="mediamtxStatus">MediaMTX: -</span>
+          <a class="btn ghost small" href="/mediamtx/log" target="_blank" rel="noreferrer">Log</a>
+          <a class="btn ghost small" href="/mediamtx/err" target="_blank" rel="noreferrer">Erro</a>
+        </div>
+
+        <label class="checkbox">
+          <input id="forceHttps" type="checkbox" />
+          <span>Forcar HTTPS no viewer/publisher</span>
+        </label>
+        <label class="checkbox">
+          <input id="logsVerbose" type="checkbox" />
+          <span>Ativar logs detalhados</span>
+        </label>
+
+        <label class="field">
+          <span>
+            Formato padrao de gravacao
+            <span
+              class="help-icon"
+              role="button"
+              tabindex="0"
+              aria-label="Ajuda: formato preferido para gravacoes. Se nao suportado, usa o outro."
+              data-tooltip="Formato preferido para gravacoes. Se nao suportado, usa o outro."
+            >?</span>
+          </span>
+          <select id="recordingFormat">
+            <option value="mp4">MP4</option>
+            <option value="webm">WebM</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>
+            Nome padrao das gravacoes
+            <span
+              class="help-icon"
+              role="button"
+              tabindex="0"
+              aria-label="Ajuda: use {camera}, {data}, {hora}, {datetime}."
+              data-tooltip="Use {camera}, {data}, {hora}, {datetime}."
+            >?</span>
+          </span>
+          <input id="recordingNamePattern" type="text" placeholder="{camera}-{data}-{hora}" />
+        </label>
+
+        <div class="motion-controls">
+          <label class="motion-toggle">
+            <input type="checkbox" id="motionDefaultEnabled" />
+            Gravacao automatica (motion) ativa
+          </label>
+          <label class="motion-field">
+            Sensibilidade padrao
+            <input type="range" id="motionDefaultSensitivity" min="10" max="100" value="60" />
+            <span class="motion-value" id="motionDefaultValue">60</span>
+          </label>
+          <label class="motion-field">
+            Parar apos (s)
+            <input type="range" id="motionDefaultStop" min="3" max="20" value="6" />
+            <span class="motion-stop-value" id="motionDefaultStopValue">6s</span>
+          </label>
+        </div>
+
+        <label class="field">
+          <span>
+            Pasta de gravacoes
+            <span
+              class="help-icon"
+              role="button"
+              tabindex="0"
+              aria-label="Ajuda: onde o servidor salva as gravacoes enviadas pelo viewer. Pode ser caminho absoluto ou relativo ao projeto."
+              data-tooltip="Onde o servidor salva as gravacoes enviadas pelo viewer. Pode ser caminho absoluto ou relativo ao projeto."
+            >?</span>
+          </span>
+          <input id="recordingsDir" type="text" placeholder="C:\\dev\\cam-app\\recordings ou recordings" />
+        </label>
+        <p class="hint">Deixe vazio para usar o padrao do servidor.</p>
+        <p class="hint">Pasta resolvida: <span id="resolvedDir">-</span></p>
+
+        <div class="actions">
+          <button id="save" class="btn">Salvar</button>
+          <button id="reload" class="btn ghost">Recarregar</button>
+        </div>
+
+        <div id="status" class="status">Pronto</div>
+      </section>
+
+      <section class="panel">
+        <div class="log">
+          <div class="log-title">Logs</div>
+          <pre id="log"></pre>
+          <button id="clearLog" class="btn ghost small">Limpar logs</button>
+        </div>
+      </section>
+    </main>
+
+    <script src="admin.js"></script>
+  </body>
+</html>

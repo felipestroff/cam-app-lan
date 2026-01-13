@@ -3,6 +3,8 @@ mediamtx/*.zip
 mediamtx/*.log
 mediamtx/data/
 logs/
+recordings/
 *.tmp
 web/ip-cameras.json
 scripts/ip-cameras-rtsp.json
+server-config.json

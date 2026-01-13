@@ -2,8 +2,5 @@ paths:
   all:
     source: publisher
   onvif-3fa1fe68-b915-4053-a3e1-e4fac4792b75:
-    source: "rtsp://luizstroff:lu02fe24vi19@192.168.0.101:554/stream1"
-    sourceOnDemand: yes
-  onvif-3fa1fe68-b915-4053-a3e1-e4fac479322a:
-    source: "rtsp://luizstroff:lu02fe24vi19@192.168.0.126:554/stream1"
+    source: "rtsp://luizstroff:lu02fe24vi19@192.168.1.10:554/stream1"
     sourceOnDemand: yes
