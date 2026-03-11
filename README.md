@@ -19,15 +19,15 @@ Initial project for viewing cameras on LAN (without login) using WebRTC directly
 
 - PowerShell (Administrator):
 
-``powershell
+```powershell
 .\scripts\serve-web.ps1 -Root .\web -Port 5173 -HostName +
-
-``
+```
 
 - Optional: define the folder for recordings received from the viewer:
 
-``powershell
+```powershell
 .\scripts\serve-web.ps1 -Root .\web -Port 5173 -HostName + -RecordingsDir .\recordings
+```
 
 Open in browser: `http://YOUR_LOCAL_IP:5173` (e.g., `http://192.168.1.6:5173`)
 
@@ -86,34 +86,35 @@ Open in browser: `http://YOUR_LOCAL_IP:5173` (e.g., `http://192.168.1.6:5173`)
 
 - Run discovery (Node.js) to generate `web/ip-cameras.json`:
 
-``powershell
+```powershell
 node .\scripts\onvif-discover.js --watch
+```
 
-``
 - Configure the RTSP URLs (copy the `id` from `ip-cameras.json`):
 
-``powershell
+```powershell
 Copy-Item .\scripts\ip-cameras-rtsp.sample.json .\scripts\ip-cameras-rtsp.json
+```
 
-``
 - To discover RTSP via ONVIF using the camera account:
 
-``powershell
+```powershell
 node .\scripts\onvif-rtsp.js --id YOUR_ID --user YOUR_USERNAME --pass YOUR_PASSWORD
+```
 
-``
 - Or for all discovered cameras:
 
-``powershell
+```powershell
 node .\scripts\onvif-rtsp.js --all --user YOUR_USERNAME --pass YOUR_PASSWORD
-Edit `scripts/ip-cameras-rtsp.json` if you want to manually adjust the `rtspUrl`.
+```
+Edit `scripts/ip-cameras-rtsp.json``` if you want to manually adjust the `rtspUrl`.
 
 - Always restart MediaMTX after changing `ip-cameras-rtsp.json`:
 
-``powershell
+```powershell
 .\scripts\mediamtx.ps1 restart
+```
 
-``
 - Common examples:
 
 - Intelbras: `rtsp://username:password@IP:554/cam/realmonitor?channel=1&subtype=0`
@@ -122,31 +123,31 @@ Edit `scripts/ip-cameras-rtsp.json` if you want to manually adjust the `rtspUrl`
 
 - Start MediaMTX automatically (generates configuration and starts the service):
 
-``powershell
+```powershell
 .\scripts\mediamtx.ps1 start
+```
 
-``
 - To stop:
 
-``powershell
+```powershell
 .\scripts\mediamtx.ps1 stop
+```
 
-``
 - In the viewer, click **Watch** to open the IP camera via WHEP.
 
 ## HTTPS local (no flags on Android)
 - Generate and install a self-signed certificate (Administrator):
 
-``powershell
+```powershell
 .\scripts\https-setup.ps1 -Port 5173 -IpAddress YOUR_LOCAL_IP
+```
 
-``
 - Start the server with HTTPS:
 
-``powershell
+```powershell
 .\scripts\serve-web.ps1 -Root .\web -Port 5173 -HostName + -Scheme https
+```
 
-``
 - Access with `https://YOUR_LOCAL_IP:5173` and adjust the Signal Base URL to `https://YOUR_LOCAL_IP:5173`.
 
 - The browser may display an insecure site warning the first time.
@@ -181,10 +182,10 @@ Edit `scripts/ip-cameras-rtsp.json` if you want to manually adjust the `rtspUrl`
 
 - PowerShell (Administrator):
 
-``powershell
+```powershell
 New-NetFirewallRule -DisplayName "Cam App LAN 5173" -Direction Inbound -Action Allow -Protocol TCP -LocalPort 5173
+```
 
-``
 - Server recording uses `POST /recordings` and saves to `recordings/` (configurable with `-RecordingsDir`).
 
 - If ONVIF discovery does not find cameras, allow UDP 3702 in the firewall (inbound/outbound).
