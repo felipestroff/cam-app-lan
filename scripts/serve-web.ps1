@@ -131,23 +131,38 @@ function Read-JsonBody {
 }
 
 function Read-JsonFile {
-  param([string]$FilePath)
+  param(
+    [string]$FilePath,
+    [string]$Context = "json"
+  )
   if (-not (Test-Path $FilePath)) {
     return @()
   }
-  try {
-    $raw = Get-Content -Path $FilePath -Raw -Encoding UTF8
-    if ([string]::IsNullOrWhiteSpace($raw)) {
-      return @()
+  $encodings = @(
+    [System.Text.Encoding]::UTF8,
+    [System.Text.Encoding]::Unicode,
+    [System.Text.Encoding]::BigEndianUnicode
+  )
+  $lastError = $null
+  foreach ($encoding in $encodings) {
+    try {
+      $raw = [System.IO.File]::ReadAllText($FilePath, $encoding)
+      if ([string]::IsNullOrWhiteSpace($raw)) {
+        return @()
+      }
+      $data = $raw | ConvertFrom-Json
+      if ($data -isnot [System.Array]) {
+        return @($data)
+      }
+      return $data
+    } catch {
+      $lastError = $_
     }
-    $data = $raw | ConvertFrom-Json
-    if ($data -isnot [System.Array]) {
-      return @($data)
-    }
-    return $data
-  } catch {
-    return $null
   }
+  if ($lastError) {
+    Write-Warning "Falha ao ler $Context em $FilePath: $($lastError.Exception.Message)"
+  }
+  return $null
 }
 
 function Read-ServerConfig {
@@ -609,7 +624,7 @@ while ($listener.IsListening) {
       $discovered = @()
       $pathsToCheck = @($discoveredFile, $fallbackDiscoveredFile) | Select-Object -Unique
       foreach ($filePath in $pathsToCheck) {
-        $data = Read-JsonFile -FilePath $filePath
+        $data = Read-JsonFile -FilePath $filePath -Context "ip-cameras.json"
         if ($null -eq $data) {
           continue
         }
